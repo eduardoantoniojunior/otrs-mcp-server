@@ -175,3 +175,24 @@ cython_debug/
 
 # opencode
 .opencode/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# Docker
+docker-compose.override.yml
+
+# Env overrides
+.env.local
+.env.*.local
