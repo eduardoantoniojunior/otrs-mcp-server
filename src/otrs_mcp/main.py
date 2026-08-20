@@ -1,14 +1,23 @@
 #!/usr/bin/env python
+"""Entry point do OTRS MCP Server."""
+
 import logging
 import sys
 
-from otrs_mcp.server import config, mcp
+from otrs_mcp.client import OTRSClient
+from otrs_mcp.config import OTRSConfig
+from otrs_mcp.resources import mcp  # noqa: F401 — registra resources
+from otrs_mcp.tools import init_tools, mcp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 def run_server() -> None:
+    config = OTRSConfig()
+    client = OTRSClient(config)
+    init_tools(config, client)
+
     logger.info("OTRS MCP Server Configuration:")
     logger.info("  Base URL: %s", config.base_url)
     logger.info("  Username: %s", config.username)
