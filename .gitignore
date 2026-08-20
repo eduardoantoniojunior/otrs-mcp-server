@@ -200,3 +200,7 @@ docker-compose.override.yml
 # Env overrides
 .env.local
 .env.*.local
+
+# Frontend
+frontend/node_modules
+frontend/dist

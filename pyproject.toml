@@ -17,7 +17,9 @@ dependencies = [
     "httpx>=0.28.0",
     "pydantic>=2.12.0",
     "pydantic-settings>=2.0.0",
-    "python-dotenv>=1.0.0"
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0"
 ]
 
 [project.optional-dependencies]
@@ -32,11 +34,12 @@ dev = [
 
 [project.scripts]
 otrs-mcp-server = "otrs_mcp.main:run_server"
+otrs-mcp-api = "otrs_mcp.api:app"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/otrs-mcp-server"
-Repository = "https://github.com/yourusername/otrs-mcp-server"
-Issues = "https://github.com/yourusername/otrs-mcp-server/issues"
+Homepage = "https://github.com/eduardoantoniojunior/otrs-mcp-server"
+Repository = "https://github.com/eduardoantoniojunior/otrs-mcp-server"
+Issues = "https://github.com/eduardoantoniojunior/otrs-mcp-server/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/otrs_mcp"]
