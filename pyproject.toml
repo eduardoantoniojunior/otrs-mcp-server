@@ -7,7 +7,7 @@ name = "otrs-mcp-server"
 version = "0.1.0"
 description = "Model Context Protocol server for OTRS (Open Ticket Request System) integration"
 authors = [
-    {name = "Season Poon", email = "seasonpoon.admin@example.com"}
+    {name = "Eduardo Antonio", email = "ejunior@beonup.com.br"}
 ]
 readme = "README.md"
 license = {text = "Apache-2.0"}
