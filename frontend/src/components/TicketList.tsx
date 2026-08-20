@@ -3,22 +3,17 @@ import { Link } from 'react-router-dom';
 import { useTickets } from '../hooks/useTickets';
 import { Search, ExternalLink } from 'lucide-react';
 
-const PRIORITY_COLORS: Record<string, string> = {
-  '1 low': 'bg-green-100 text-green-800',
-  '2 normal': 'bg-blue-100 text-blue-800',
-  '3 normal': 'bg-yellow-100 text-yellow-800',
-  '4 high': 'bg-red-100 text-red-800',
-};
-
 export default function TicketList() {
   const [search, setSearch] = useState('');
   const [queue, setQueue] = useState('');
   const [state, setState] = useState('');
+  const [priority, setPriority] = useState('');
 
   const { data, isLoading, error } = useTickets({
     title: search || undefined,
     queue: queue || undefined,
     state: state || undefined,
+    priority: priority || undefined,
     limit: 50,
   });
 
@@ -29,7 +24,7 @@ export default function TicketList() {
       <h1 className="text-2xl font-bold mb-6">Tickets</h1>
 
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
             <input
@@ -61,6 +56,17 @@ export default function TicketList() {
             <option value="closed successful">Fechado com sucesso</option>
             <option value="closed unsuccessful">Fechado sem sucesso</option>
           </select>
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+            className="border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Todas prioridades</option>
+            <option value="1 low">1 - Baixa</option>
+            <option value="2 normal">2 - Normal</option>
+            <option value="3 normal">3 - Normal</option>
+            <option value="4 high">4 - Alta</option>
+          </select>
           <Link
             to="/tickets/new"
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-center"
@@ -89,7 +95,7 @@ export default function TicketList() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {ticketIds.map((ticketId) => (
+              {ticketIds.map((ticketId: string) => (
                 <tr key={ticketId} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-mono text-sm">#{ticketId}</td>
                   <td className="px-4 py-3">
