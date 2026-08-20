@@ -1,0 +1,12 @@
+services:
+  otrs-mcp:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    stdin_open: true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; print('healthy')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 5s
+      retries: 3

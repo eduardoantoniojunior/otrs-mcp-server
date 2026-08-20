@@ -42,9 +42,9 @@ CMD ["python", "-m", "otrs_mcp.main"]
 LABEL org.opencontainers.image.title="OTRS MCP Server" \
       org.opencontainers.image.description="Model Context Protocol server for OTRS integration" \
       org.opencontainers.image.version="0.1.0" \
-      org.opencontainers.image.authors="Season Poon" \
-      org.opencontainers.image.source="https://github.com/yourusername/otrs-mcp-server" \
+      org.opencontainers.image.authors="Eduardo Antonio" \
+      org.opencontainers.image.source="https://github.com/eduardoantoniojunior/otrs-mcp-server" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.url="https://github.com/yourusername/otrs-mcp-server" \
-      org.opencontainers.image.documentation="https://github.com/yourusername/otrs-mcp-server#readme" \
-      org.opencontainers.image.vendor="Season Poon"
+      org.opencontainers.image.url="https://github.com/eduardoantoniojunior/otrs-mcp-server" \
+      org.opencontainers.image.documentation="https://github.com/eduardoantoniojunior/otrs-mcp-server#readme" \
+      org.opencontainers.image.vendor="BeOnUp"
