@@ -11,7 +11,7 @@ COPY uv.lock ./
 COPY src ./src/
 
 RUN uv venv && \
-    uv pip install -e .
+    uv pip install .
 
 FROM python:3.12-slim-bookworm
 

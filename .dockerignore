@@ -5,7 +5,7 @@ __pycache__
 *.pyo
 tests/
 .env
-*.md
+PLANO_MELHORIAS.md
 .mypy_cache/
 .pytest_cache/
 htmlcov/
