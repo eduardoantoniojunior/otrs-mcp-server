@@ -175,6 +175,10 @@ cython_debug/
 
 # opencode
 .opencode/
+opencode.json
+
+# Project docs (not for repo)
+PLANO_MELHORIAS.md
 
 # OS
 .DS_Store
