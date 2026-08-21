@@ -62,10 +62,11 @@ export default function TicketList() {
             className="border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">Todas prioridades</option>
-            <option value="1 low">1 - Baixa</option>
-            <option value="2 normal">2 - Normal</option>
+            <option value="1 very low">1 - Muito Baixa</option>
+            <option value="2 low">2 - Baixa</option>
             <option value="3 normal">3 - Normal</option>
             <option value="4 high">4 - Alta</option>
+            <option value="5 very high">5 - Muito Alta</option>
           </select>
           <Link
             to="/tickets/new"

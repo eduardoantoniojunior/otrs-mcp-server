@@ -205,3 +205,6 @@ docker-compose.override.yml
 frontend/node_modules
 frontend/dist
 frontend/*.tsbuildinfo
+
+# Activity data (runtime)
+activity.json

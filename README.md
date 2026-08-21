@@ -14,6 +14,9 @@ This provides access to OTRS ticket management through standardized MCP interfac
 - [x] Docker containerization support
 - [x] SSL/TLS support with certificate verification options
 - [x] Provide interactive tools for AI assistants
+- [x] MCP activity monitoring (tracks tool calls, success/error rates, duration)
+- [x] REST API for frontend integration
+- [x] React dashboard with real-time activity metrics
 
 The list of tools is configurable, so you can choose which tools you want to make available to the MCP client.
 
@@ -157,16 +160,19 @@ Then edit your Claude Desktop config file and add the server configuration:
 
 ## Environment Variables
 
-| Variable                | Required | Default        | Description                         |
-| ----------------------- | -------- | -------------- | ----------------------------------- |
-| `OTRS_BASE_URL`         | ✅       | -              | Base URL for OTRS webservice        |
-| `OTRS_USERNAME`         | ✅       | -              | OTRS username                       |
-| `OTRS_PASSWORD`         | ✅       | -              | OTRS password                       |
-| `OTRS_VERIFY_SSL`       | ❌       | `false`        | Enable SSL certificate verification |
-| `OTRS_DEFAULT_QUEUE`    | ❌       | `Raw`          | Default queue for new tickets       |
-| `OTRS_DEFAULT_STATE`    | ❌       | `new`          | Default state for new tickets       |
-| `OTRS_DEFAULT_PRIORITY` | ❌       | `3 normal`     | Default priority for new tickets    |
-| `OTRS_DEFAULT_TYPE`     | ❌       | `Unclassified` | Default type for new tickets        |
+| Variable                | Required | Default                            | Description                         |
+| ----------------------- | -------- | ---------------------------------- | ----------------------------------- |
+| `OTRS_BASE_URL`         | ✅       | -                                  | Base URL for OTRS webservice        |
+| `OTRS_USERNAME`         | ✅       | -                                  | OTRS username                       |
+| `OTRS_PASSWORD`         | ✅       | -                                  | OTRS password                       |
+| `OTRS_VERIFY_SSL`       | ❌       | `false`                            | Enable SSL certificate verification |
+| `OTRS_TIMEOUT`          | ❌       | `30`                               | HTTP timeout in seconds             |
+| `OTRS_DEBUG`            | ❌       | `false`                            | Enable debug logging                |
+| `OTRS_DEFAULT_QUEUE`    | ❌       | `Raw`                              | Default queue for new tickets       |
+| `OTRS_DEFAULT_STATE`    | ❌       | `new`                              | Default state for new tickets       |
+| `OTRS_DEFAULT_PRIORITY` | ❌       | `3 normal`                         | Default priority for new tickets    |
+| `OTRS_DEFAULT_TYPE`     | ❌       | `Unclassified`                     | Default type for new tickets        |
+| `OTRS_CORS_ORIGINS`     | ❌       | `http://localhost:5173,http://localhost:8080` | Allowed CORS origins for API |
 
 ## Development
 
@@ -201,175 +207,44 @@ uv pip install -e .
 
 ### Testing
 
-Test your OTRS connection and API functionality:
+Run the unit tests:
+
+```bash
+# Install development dependencies
+uv sync --extra dev
+
+# Run unit tests
+uv run pytest tests/unit/ -v
+
+# Run with coverage report
+uv run pytest tests/unit/ --cov=src/otrs_mcp --cov-report=term-missing
+```
+
+For integration testing against a real OTRS instance:
 
 ```bash
 # Set environment variables
 export OTRS_BASE_URL="https://your-otrs-server/otrs/nph-genericinterface.pl/Webservice/TestInterface"
 export OTRS_USERNAME="your-username"
 export OTRS_PASSWORD="your-password"
-export OTRS_VERIFY_SSL="false"
 
-# Run connectivity test
-uv run python tests/connectivity_test.py
-
-# Run API functionality test
-uv run python tests/test_working_api.py
-
-# Run debug diagnostics
-uv run python tests/debug_test.py
-```
-
-The project includes test scripts that help verify your OTRS configuration and API connectivity.
-
-Run the tests with pytest:
-
-```bash
-# Install development dependencies
-uv pip install -e ".[dev]"
-
-# Run the tests
-pytest
-
-# Run with coverage report
-pytest --cov=src --cov-report=term-missing
+# Run integration tests
+uv run pytest tests/integration/ -v -m integration
 ```
 
 ### Publishing Docker Image
 
-To publish the Docker image to GitHub Container Registry for public use:
-
-#### Prerequisites
-
-1. **GitHub Account** with a repository for this project
-2. **GitHub Personal Access Token** with `write:packages` permission
-3. **Docker** installed locally
-
-#### Step-by-Step Publishing
-
-1. **Create GitHub Personal Access Token**:
-
-   - Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
-   - Generate new token with `write:packages` and `read:packages` permissions
-   - Save the token securely
-
-2. **Login to GitHub Container Registry**:
-
-   ```bash
-   echo $GITHUB_TOKEN | docker login ghcr.io -u yourusername --password-stdin
-   ```
-
-3. **Build and Tag the Image**:
-
-   ```bash
-   # Build the image
-   docker build -t otrs-mcp-server .
-
-   # Tag for GitHub Container Registry
-   docker tag otrs-mcp-server ghcr.io/yourusername/otrs-mcp-server:latest
-   docker tag otrs-mcp-server ghcr.io/yourusername/otrs-mcp-server:v0.1.0
-   ```
-
-4. **Push to Registry**:
-
-   ```bash
-   # Push latest tag
-   docker push ghcr.io/yourusername/otrs-mcp-server:latest
-
-   # Push version tag
-   docker push ghcr.io/yourusername/otrs-mcp-server:v0.1.0
-   ```
-
-5. **Make Package Public** (Optional):
-   - Go to your GitHub repository
-   - Navigate to Packages section
-   - Click on your package
-   - Go to Package settings
-   - Change visibility to Public
-
-#### Automated Publishing with GitHub Actions
-
-Create `.github/workflows/docker-publish.yml`:
-
-```yaml
-name: Build and Push Docker Image
-
-on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
-    branches: [main]
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
-jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-```
-
-#### Alternative: Docker Hub
-
-To publish to Docker Hub instead:
+To publish the Docker image:
 
 ```bash
-# Login to Docker Hub
-docker login
+# Build the image
+docker build -t otrs-mcp-server .
 
-# Tag for Docker Hub
+# Tag for your registry
 docker tag otrs-mcp-server yourusername/otrs-mcp-server:latest
-docker tag otrs-mcp-server yourusername/otrs-mcp-server:v0.1.0
 
-# Push to Docker Hub
+# Push
 docker push yourusername/otrs-mcp-server:latest
-docker push yourusername/otrs-mcp-server:v0.1.0
-```
-
-Then update the Claude Desktop config to use:
-
-```json
-"ghcr.io/yourusername/otrs-mcp-server:latest"
-```
-
-or
-
-```json
-"yourusername/otrs-mcp-server:latest"
 ```
 
 ## Available Tools

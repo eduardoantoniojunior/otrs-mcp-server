@@ -4,11 +4,15 @@ services:
       context: .
       dockerfile: Dockerfile.api
     env_file: .env
+    environment:
+      - OTRS_ACTIVITY_FILE=/data/activity.json
     ports:
       - "3000:3000"
+    volumes:
+      - activity-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:3000/api/health')"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:3000/api/health').raise_for_status()"]
       interval: 30s
       timeout: 10s
       start_period: 10s
@@ -28,11 +32,18 @@ services:
   mcp-server:
     build: .
     env_file: .env
+    environment:
+      - OTRS_ACTIVITY_FILE=/data/activity.json
+    volumes:
+      - activity-data:/data
     restart: unless-stopped
     stdin_open: true
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; print('healthy')"]
+      test: ["CMD-SHELL", "pgrep -f 'otrs_mcp.main' || exit 1"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       start_period: 5s
       retries: 3
+
+volumes:
+  activity-data:

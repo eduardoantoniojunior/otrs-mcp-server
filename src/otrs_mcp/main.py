@@ -6,7 +6,7 @@ import sys
 
 from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
-from otrs_mcp.resources import mcp  # noqa: F401 — registra resources
+import otrs_mcp.resources  # noqa: F401 — registra resources no mcp
 from otrs_mcp.tools import init_tools, mcp
 
 logging.basicConfig(level=logging.INFO)

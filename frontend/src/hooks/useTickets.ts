@@ -2,6 +2,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
 import type { TicketCreateInput, TicketUpdateInput } from '../types/ticket';
 
+export function useHealth() {
+  return useQuery({
+    queryKey: ['health'],
+    queryFn: () => api.health(),
+    refetchInterval: 30000,
+    retry: 3,
+  });
+}
+
 export function useTickets(params: {
   customer_user?: string;
   queue?: string;
@@ -50,6 +59,37 @@ export function useUpdateTicket() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
       queryClient.invalidateQueries({ queryKey: ['ticket', variables.ticketId] });
+    },
+  });
+}
+
+export function useActivity(params: {
+  limit?: number;
+  tool?: string;
+  status?: string;
+} = {}) {
+  return useQuery({
+    queryKey: ['activity', params],
+    queryFn: () => api.getActivity(params),
+    refetchInterval: 10000,
+  });
+}
+
+export function useActivitySummary() {
+  return useQuery({
+    queryKey: ['activitySummary'],
+    queryFn: () => api.getActivitySummary(),
+    refetchInterval: 10000,
+  });
+}
+
+export function useClearActivity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.clearActivity(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+      queryClient.invalidateQueries({ queryKey: ['activitySummary'] });
     },
   });
 }

@@ -1,7 +1,7 @@
 """Excecoes customizadas para o OTRS MCP Server."""
 
 
-class OTRError(Exception):
+class OTRSError(Exception):
     """Excecao base para erros do OTRS."""
 
     def __init__(self, message: str, details: dict | None = None) -> None:
@@ -9,23 +9,23 @@ class OTRError(Exception):
         self.details = details or {}
 
 
-class OTRSConnectionError(OTRError):
+class OTRSConnectionError(OTRSError):
     """Erro de conexao com o OTRS."""
 
 
-class OTRSAuthenticationError(OTRError):
+class OTRSAuthenticationError(OTRSError):
     """Erro de autenticacao no OTRS."""
 
 
-class OTRSTicketNotFoundError(OTRError):
+class OTRSTicketNotFoundError(OTRSError):
     """Ticket nao encontrado no OTRS."""
 
 
-class OTRSValidationError(OTRError):
+class OTRSValidationError(OTRSError):
     """Erro de validacao de dados enviados ao OTRS."""
 
 
-class OTRSAPIError(OTRError):
+class OTRSAPIError(OTRSError):
     """Erro retornado pela API do OTRS."""
 
     def __init__(

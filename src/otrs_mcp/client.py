@@ -7,7 +7,12 @@ from typing import Any
 import httpx
 
 from otrs_mcp.config import OTRSConfig
-from otrs_mcp.exceptions import OTRSAPIError, OTRSConnectionError
+from otrs_mcp.exceptions import (
+    OTRSAPIError,
+    OTRSAuthenticationError,
+    OTRSConnectionError,
+    OTRSTicketNotFoundError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,24 +21,87 @@ BACKOFF_BASE = 1.0
 
 
 class OTRSClient:
-    """Cliente HTTP para a API do OTRS com retry e timeout configuravel."""
+    """Cliente HTTP para a API do OTRS com sessao, retry e timeout configuravel."""
 
     def __init__(self, config: OTRSConfig) -> None:
         self._config = config
+        self._session_id: str | None = None
         self._headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
 
+    async def _create_session(self) -> str:
+        """Cria uma sessao no OTRS via SessionCreate.
+
+        Segue o mesmo fluxo do script de teste:
+        POST {base_url}/SessionCreate com CustomerUserLogin + Password.
+        """
+        url = f"{self._config.base_url}/SessionCreate"
+        payload = {
+            "CustomerUserLogin": self._config.username,
+            "Password": self._config.password,
+        }
+
+        async with httpx.AsyncClient(
+            verify=self._config.verify_ssl,
+            follow_redirects=True,
+            timeout=self._config.timeout,
+        ) as client:
+            response = await client.post(url, json=payload, headers=self._headers)
+            response.raise_for_status()
+            result = response.json()
+
+        if result.get("Error"):
+            error_info = result["Error"]
+            error_code = error_info.get("ErrorCode", "") if isinstance(error_info, dict) else ""
+            error_msg = error_info.get("ErrorMessage", "") if isinstance(error_info, dict) else str(error_info)
+
+            if "AuthFail" in error_code:
+                raise OTRSAuthenticationError(
+                    f"Falha na autenticacao: {error_msg}",
+                    details={"error_code": error_code},
+                )
+            raise OTRSAPIError(
+                f"Erro ao criar sessao: {error_msg}",
+                response_body=str(result),
+            )
+
+        session_id = result.get("SessionID")
+        if not session_id or not str(session_id).strip():
+            raise OTRSAuthenticationError(
+                "SessionCreate retornou HTTP 200 mas sem SessionID valida",
+                details={"response": result},
+            )
+
+        session_id = str(session_id).strip()
+        logger.info("Sessao OTRS criada com sucesso")
+        return session_id
+
+    async def _ensure_session(self) -> str:
+        """Garante que existe uma sessao ativa, criando uma se necessario."""
+        if self._session_id is None:
+            self._session_id = await self._create_session()
+        return self._session_id
+
+    def _invalidate_session(self) -> None:
+        """Invalida a sessao atual para forcar recriacao."""
+        self._session_id = None
+
     async def request(
         self, operation: str, data: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        """Envia requisicao autenticada para a API do OTRS com retry."""
+        """Envia requisicao autenticada para a API do OTRS com retry.
+
+        Usa CustomerUserLogin + Password + SessionID, igual ao script de teste.
+        """
         url = f"{self._config.base_url}/{operation}"
+        session_id = await self._ensure_session()
 
         request_data: dict[str, Any] = {
-            "UserLogin": self._config.username,
+            "CustomerUserLogin": self._config.username,
             "Password": self._config.password,
+            "SessionID": session_id,
         }
         if data:
             request_data.update(data)
@@ -52,6 +120,48 @@ class OTRSClient:
                     )
                     response.raise_for_status()
                     result = response.json()
+
+                    if result.get("Error"):
+                        error_info = result["Error"]
+                        error_code = (
+                            error_info.get("ErrorCode", "")
+                            if isinstance(error_info, dict)
+                            else ""
+                        )
+                        error_msg = (
+                            error_info.get("ErrorMessage", "")
+                            if isinstance(error_info, dict)
+                            else str(error_info)
+                        )
+
+                        if "AuthFail" in error_code:
+                            if attempt < MAX_RETRIES:
+                                logger.warning(
+                                    "Sessao expirada em %s, recriando (tentativa %d/%d)",
+                                    operation,
+                                    attempt,
+                                    MAX_RETRIES,
+                                )
+                                self._invalidate_session()
+                                session_id = await self._ensure_session()
+                                request_data["SessionID"] = session_id
+                                await asyncio.sleep(BACKOFF_BASE * (2 ** (attempt - 1)))
+                                continue
+                            raise OTRSAuthenticationError(
+                                f"Sessao expirada apos {MAX_RETRIES} tentativas",
+                                details={"error_code": error_code},
+                            )
+
+                        if "not found" in error_msg.lower() or "no ticket" in error_msg.lower():
+                            raise OTRSTicketNotFoundError(
+                                f"Ticket nao encontrado: {error_msg}",
+                                details={"operation": operation, "response": result},
+                            )
+
+                        raise OTRSAPIError(
+                            f"Erro de aplicacao: {error_msg}",
+                            response_body=str(result),
+                        )
 
                     if self._config.debug:
                         logger.debug(
@@ -73,6 +183,10 @@ class OTRSClient:
                     MAX_RETRIES,
                     e,
                 )
+                if e.response.status_code == 401 and attempt < MAX_RETRIES:
+                    self._invalidate_session()
+                    session_id = await self._ensure_session()
+                    request_data["SessionID"] = session_id
                 if attempt < MAX_RETRIES:
                     await asyncio.sleep(BACKOFF_BASE * (2 ** (attempt - 1)))
 
@@ -89,7 +203,17 @@ class OTRSClient:
                     await asyncio.sleep(BACKOFF_BASE * (2 ** (attempt - 1)))
 
         if isinstance(last_error, httpx.HTTPStatusError):
-            return {"Error": f"HTTP {last_error.response.status_code}: {last_error.response.text}"}
+            status_code = last_error.response.status_code
+            if status_code == 401:
+                raise OTRSAuthenticationError(
+                    "Credenciais OTRS invalidas",
+                    details={"status_code": status_code},
+                )
+            raise OTRSAPIError(
+                f"Erro HTTP {status_code}",
+                status_code=status_code,
+                response_body=last_error.response.text,
+            )
 
         raise OTRSConnectionError(f"Falha apos {MAX_RETRIES} tentativas: {last_error}")
 

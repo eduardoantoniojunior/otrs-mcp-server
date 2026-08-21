@@ -51,3 +51,29 @@ export interface TicketUpdateInput {
   customer_user?: string;
   owner?: string;
 }
+
+export interface ActivityEvent {
+  tool: string;
+  status: "success" | "error";
+  duration_ms: number;
+  timestamp: number;
+  timestamp_iso: string;
+  ticket_id?: string;
+  error?: string;
+  params?: Record<string, unknown>;
+}
+
+export interface ActivitySummary {
+  total_calls: number;
+  by_tool: Record<string, number>;
+  by_status: { success: number; error: number };
+  last_24h: {
+    calls: number;
+    by_tool: Record<string, number>;
+  };
+}
+
+export interface ActivityResponse {
+  events: ActivityEvent[];
+  summary: ActivitySummary;
+}

@@ -1,4 +1,12 @@
-import type { Ticket, TicketSearchResult, TicketCreateInput, TicketUpdateInput, TicketHistory } from '../types/ticket';
+import type {
+  Ticket,
+  TicketSearchResult,
+  TicketCreateInput,
+  TicketUpdateInput,
+  TicketHistory,
+  ActivityResponse,
+  ActivitySummary,
+} from '../types/ticket';
 
 const API_BASE = '/api';
 
@@ -54,4 +62,27 @@ export const api = {
 
   getTicketHistory: (ticketId: string) =>
     request<TicketHistory>(`/tickets/${ticketId}/history`),
+
+  getActivity: (params: {
+    limit?: number;
+    tool?: string;
+    status?: string;
+  } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        query.set(key, String(value));
+      }
+    });
+    const qs = query.toString();
+    return request<ActivityResponse>(`/activity${qs ? `?${qs}` : ''}`);
+  },
+
+  getActivitySummary: () =>
+    request<ActivitySummary>('/activity/summary'),
+
+  clearActivity: () =>
+    request<{ status: string; message: string }>('/activity', {
+      method: 'DELETE',
+    }),
 };

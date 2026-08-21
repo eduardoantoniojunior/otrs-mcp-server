@@ -8,12 +8,12 @@ from otrs_mcp.exceptions import OTRSValidationError
 class OTRSConfig(BaseSettings):
     """Configuracao do OTRS carregada de variaveis de ambiente."""
 
-    model_config = SettingsConfigDict(env_prefix="OTRS_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="OTRS_")
 
     base_url: str = ""
     username: str = ""
     password: str = ""
-    verify_ssl: bool = False
+    verify_ssl: bool = True
     timeout: int = 30
     debug: bool = False
     default_queue: str = "Raw"

@@ -67,7 +67,7 @@ docker compose down
 | `OTRS_BASE_URL` | Sim | URL base do OTRS |
 | `OTRS_USERNAME` | Sim | Usuario do OTRS |
 | `OTRS_PASSWORD` | Sim | Senha do OTRS |
-| `OTRS_VERIFY_SSL` | Nao | Verificar SSL (default: false) |
+| `OTRS_VERIFY_SSL` | Nao | Verificar SSL (default: true) |
 | `OTRS_TIMEOUT` | Nao | Timeout HTTP em segundos (default: 30) |
 | `OTRS_DEFAULT_QUEUE` | Nao | Fila padrao (default: Raw) |
 | `OTRS_DEFAULT_STATE` | Nao | Estado padrao (default: new) |
