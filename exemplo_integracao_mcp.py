@@ -62,8 +62,15 @@ OTRS_ENV = {
 # Conexão com o MCP Server
 # =============================================================================
 
-def get_server_params() -> StdioServerParameters:
-    """Configura os parâmetros para iniciar o MCP server como subprocess."""
+# ESCOLHA O MODO DE CONEXÃO: "stdio" (local) ou "http" (remoto na AWS)
+MODO_CONEXAO = "stdio" 
+
+# Configurações para modo "http" (remoto)
+OTRS_REMOTE_URL = "https://seu-dominio-ou-ip/mcp"
+OTRS_API_KEY = "sk-otrs-sua-api-key-aqui"
+
+def get_stdio_params() -> StdioServerParameters:
+    """Configura os parâmetros para iniciar o MCP server localmente (stdio)."""
     env = {**os.environ, **OTRS_ENV}
 
     return StdioServerParameters(
@@ -72,6 +79,30 @@ def get_server_params() -> StdioServerParameters:
         cwd=OTRS_MCP_PROJECT_DIR,
         env=env,
     )
+
+import contextlib
+import httpx
+from mcp.client.streamable_http import streamable_http_client
+
+@contextlib.asynccontextmanager
+async def conectar_mcp():
+    """Gerencia a conexão baseada no modo escolhido."""
+    if MODO_CONEXAO == "stdio":
+        print("🔌 Conectando ao OTRS MCP Server via STDIO (Local)...")
+        server_params = get_stdio_params()
+        async with stdio_client(server_params) as (read_stream, write_stream):
+            yield read_stream, write_stream
+    elif MODO_CONEXAO == "http":
+        print(f"🌐 Conectando ao OTRS MCP Server via HTTP (Remoto) em {OTRS_REMOTE_URL}...")
+        http_client = httpx.AsyncClient(
+            headers={"Authorization": f"Bearer {OTRS_API_KEY}"},
+            verify=False # Desative em prod ou se usar IP direto sem SSL válido
+        )
+        async with streamable_http_client(OTRS_REMOTE_URL, http_client=http_client) as streams:
+            # streamable_http_client retorna (read_stream, write_stream, session_id_callback)
+            yield streams[0], streams[1]
+    else:
+        raise ValueError(f"Modo de conexão desconhecido: {MODO_CONEXAO}")
 
 
 # =============================================================================
@@ -204,13 +235,7 @@ async def buscar_tickets(session: ClientSession) -> None:
 
 async def main() -> None:
     """Conecta ao MCP server e executa os exemplos."""
-    server_params = get_server_params()
-
-    print("🔌 Conectando ao OTRS MCP Server...")
-    print(f"   Comando: {server_params.command} {' '.join(server_params.args)}")
-    print(f"   CWD: {server_params.cwd}")
-
-    async with stdio_client(server_params) as (read_stream, write_stream):
+    async with conectar_mcp() as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             # Inicializa a sessão MCP
             await session.initialize()
