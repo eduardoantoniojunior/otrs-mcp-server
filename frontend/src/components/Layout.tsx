@@ -5,8 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/tickets', label: 'Tickets', icon: Ticket },
-  { path: '/tickets/new', label: 'Novo Ticket', icon: Plus },
   { path: '/api-keys', label: 'API Keys', icon: Key },
+  { path: '/tickets/new', label: 'Novo Ticket', icon: Plus },
 ];
 
 export default function Layout() {
