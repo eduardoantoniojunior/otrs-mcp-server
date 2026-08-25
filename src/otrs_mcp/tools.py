@@ -3,7 +3,7 @@
 import logging
 import time
 from typing import Any
-
+import os
 from mcp.server.fastmcp import FastMCP
 
 from otrs_mcp.activity import record_tool_call
@@ -14,7 +14,10 @@ from otrs_mcp.exceptions import OTRSValidationError
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("OTRS API MCP")
+MCP_HOST = os.getenv("OTRS_MCP_HOST", "0.0.0.0")
+MCP_PORT = int(os.getenv("OTRS_MCP_PORT", "8001"))
+
+mcp = FastMCP("OTRS API MCP", host=MCP_HOST, port=MCP_PORT)
 
 _client: OTRSClient | None = None
 _config: OTRSConfig | None = None

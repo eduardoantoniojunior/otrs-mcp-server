@@ -1,6 +1,7 @@
 services:
   caddy:
     image: caddy:2-alpine
+    env_file: .env
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
@@ -36,7 +37,7 @@ services:
       - "3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:3000/api/health').raise_for_status()"]
+      test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:3000/api/health').raise_for_status()" ]
       interval: 30s
       timeout: 10s
       start_period: 10s
@@ -59,7 +60,7 @@ services:
       - "8001"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import httpx; httpx.get('http://localhost:8001/mcp').raise_for_status()\" || exit 1"]
+      test: [ "CMD-SHELL", "python -c \"import httpx; httpx.get('http://localhost:8001/mcp').raise_for_status()\" || exit 1" ]
       interval: 30s
       timeout: 10s
       start_period: 5s
