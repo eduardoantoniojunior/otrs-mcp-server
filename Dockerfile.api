@@ -19,14 +19,18 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+RUN groupadd -r otrs && useradd -r -g otrs otrs
+
 COPY --from=builder /app/.venv /app/.venv
 
-RUN mkdir -p /data
+RUN mkdir -p /data && chown -R otrs:otrs /app /data
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH="/app/src"
+
+USER otrs
 
 EXPOSE 3000
 

@@ -140,7 +140,9 @@ async def remove_user(
         )
     if delete_admin_user(user_id):
         return {"status": "ok", "message": "Usuario removido"}
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario nao encontrado")
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="Usuario nao encontrado"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +150,9 @@ async def remove_user(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/keys", response_model=CreateApiKeyResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/keys", response_model=CreateApiKeyResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_key(
     body: CreateApiKeyRequest,
     admin: dict[str, Any] = Depends(get_current_admin),
@@ -181,7 +185,9 @@ async def revoke_key(
     """Revoga (desativa) uma API key."""
     if revoke_api_key(key_id):
         return {"status": "ok", "message": "Key revogada"}
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key nao encontrada")
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="Key nao encontrada"
+    )
 
 
 @router.delete("/keys/{key_id}")
@@ -192,7 +198,9 @@ async def remove_key(
     """Remove permanentemente uma API key."""
     if delete_api_key(key_id):
         return {"status": "ok", "message": "Key removida"}
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key nao encontrada")
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="Key nao encontrada"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -209,4 +217,6 @@ async def list_activity(
     admin: dict[str, Any] = Depends(get_current_admin),
 ) -> dict[str, Any]:
     """Retorna log de atividade dos agentes."""
-    return get_activity_log(limit=limit, tool_filter=tool, status_filter=status, agent_filter=agent)
+    return get_activity_log(
+        limit=limit, tool_filter=tool, status_filter=status, agent_filter=agent
+    )

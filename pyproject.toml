@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "otrs-mcp-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "Model Context Protocol server for OTRS (Open Ticket Request System) integration"
 authors = [
     {name = "Eduardo Antonio", email = "ejunior@beonup.com.br"}
@@ -35,7 +35,7 @@ dev = [
 
 [project.scripts]
 otrs-mcp-server = "otrs_mcp.main:run_server"
-otrs-mcp-api = "otrs_mcp.api:app"
+otrs-mcp-api = "otrs_mcp.api:run_server"
 
 [project.urls]
 Homepage = "https://github.com/eduardoantoniojunior/otrs-mcp-server"

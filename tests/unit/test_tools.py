@@ -32,7 +32,9 @@ class TestCreateTicket:
         assert result["TicketID"] == "456"
 
     @pytest.mark.asyncio
-    async def test_create_ticket_with_custom_params(self, initialized_tools, mock_client) -> None:
+    async def test_create_ticket_with_custom_params(
+        self, initialized_tools, mock_client
+    ) -> None:
         """create_ticket deve aceitar parametros customizados."""
         await create_ticket(
             title="Test",
@@ -55,7 +57,9 @@ class TestCreateTicket:
         )
 
     @pytest.mark.asyncio
-    async def test_create_ticket_invalid_priority(self, initialized_tools, mock_client) -> None:
+    async def test_create_ticket_invalid_priority(
+        self, initialized_tools, mock_client
+    ) -> None:
         """create_ticket deve rejeitar prioridade invalida."""
         with pytest.raises(OTRSValidationError, match="Prioridade invalida"):
             await create_ticket(title="Test", body="Body", priority="invalid")
@@ -63,13 +67,14 @@ class TestCreateTicket:
         mock_client.create_ticket.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_create_ticket_invalid_queue_uses_default(self, initialized_tools, mock_client) -> None:
-        """create_ticket deve usar fila padrao se invalida."""
-        await create_ticket(title="Test", body="Body", queue="InvalidQueue")
+    async def test_create_ticket_invalid_queue_raises(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """create_ticket deve rejeitar fila invalida."""
+        with pytest.raises(OTRSValidationError, match="Fila invalida"):
+            await create_ticket(title="Test", body="Body", queue="InvalidQueue")
 
-        mock_client.create_ticket.assert_called_once()
-        call_kwargs = mock_client.create_ticket.call_args[1]
-        assert call_kwargs["queue"] == "Raw"
+        mock_client.create_ticket.assert_not_called()
 
 
 class TestGetTicket:
@@ -88,7 +93,9 @@ class TestGetTicket:
         assert result["TicketID"] == "123"
 
     @pytest.mark.asyncio
-    async def test_get_ticket_without_dynamic_fields(self, initialized_tools, mock_client) -> None:
+    async def test_get_ticket_without_dynamic_fields(
+        self, initialized_tools, mock_client
+    ) -> None:
         """get_ticket deve aceitar flag include_dynamic_fields=False."""
         await get_ticket(ticket_id="123", include_dynamic_fields=False)
 
@@ -120,7 +127,9 @@ class TestSearchTickets:
         assert "TicketID" in result
 
     @pytest.mark.asyncio
-    async def test_search_tickets_with_filters(self, initialized_tools, mock_client) -> None:
+    async def test_search_tickets_with_filters(
+        self, initialized_tools, mock_client
+    ) -> None:
         """search_tickets deve aceitar filtros."""
         await search_tickets(
             customer_user="user@test.com",
@@ -162,7 +171,9 @@ class TestUpdateTicket:
         assert result["TicketID"] == "123"
 
     @pytest.mark.asyncio
-    async def test_update_ticket_invalid_priority(self, initialized_tools, mock_client) -> None:
+    async def test_update_ticket_invalid_priority(
+        self, initialized_tools, mock_client
+    ) -> None:
         """update_ticket deve rejeitar prioridade invalida."""
         with pytest.raises(OTRSValidationError, match="Prioridade invalida"):
             await update_ticket(ticket_id="123", priority="invalid")
@@ -174,7 +185,9 @@ class TestGetTicketHistory:
     """Testes para a tool get_ticket_history."""
 
     @pytest.mark.asyncio
-    async def test_get_ticket_history_success(self, initialized_tools, mock_client) -> None:
+    async def test_get_ticket_history_success(
+        self, initialized_tools, mock_client
+    ) -> None:
         """get_ticket_history deve chamar client.get_ticket_history."""
         result = await get_ticket_history(ticket_id="123")
 

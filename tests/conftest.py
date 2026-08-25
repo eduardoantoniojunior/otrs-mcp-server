@@ -56,8 +56,14 @@ def mock_client() -> AsyncMock:
         "TicketID": ["123", "456"],
         "WebSearchURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketSearch",
         "TicketWebURLs": [
-            {"TicketID": "123", "WebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketZoom;TicketID=123"},
-            {"TicketID": "456", "WebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketZoom;TicketID=456"},
+            {
+                "TicketID": "123",
+                "WebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketZoom;TicketID=123",
+            },
+            {
+                "TicketID": "456",
+                "WebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketZoom;TicketID=456",
+            },
         ],
     }
     client.update_ticket.return_value = {

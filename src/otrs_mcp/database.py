@@ -76,6 +76,7 @@ def get_db(db_path: str | None = None):
 # API Keys
 # ---------------------------------------------------------------------------
 
+
 def generate_api_key() -> str:
     """Gera uma chave de API segura. Formato: sk-otrs-{64 hex chars}."""
     random_bytes = secrets.token_hex(32)
@@ -103,7 +104,10 @@ def create_api_key(
     expires_at = None
     if expires_in_days:
         from datetime import timedelta
-        expires_at = (datetime.now(timezone.utc) + timedelta(days=expires_in_days)).isoformat()
+
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(days=expires_in_days)
+        ).isoformat()
 
     with get_db(db_path) as conn:
         conn.execute(
@@ -206,9 +210,7 @@ def list_api_keys(
 def revoke_api_key(key_id: int, db_path: str | None = None) -> bool:
     """Revoga (desativa) uma API key."""
     with get_db(db_path) as conn:
-        cursor = conn.execute(
-            "UPDATE api_keys SET active = 0 WHERE id = ?", (key_id,)
-        )
+        cursor = conn.execute("UPDATE api_keys SET active = 0 WHERE id = ?", (key_id,))
         return cursor.rowcount > 0
 
 
@@ -222,6 +224,7 @@ def delete_api_key(key_id: int, db_path: str | None = None) -> bool:
 # ---------------------------------------------------------------------------
 # Admin Users
 # ---------------------------------------------------------------------------
+
 
 def create_admin_user(
     username: str, password: str, db_path: str | None = None
@@ -274,7 +277,12 @@ def list_admin_users(db_path: str | None = None) -> list[dict[str, Any]]:
         ).fetchall()
 
     return [
-        {"id": r["id"], "username": r["username"], "active": bool(r["active"]), "created_at": r["created_at"]}
+        {
+            "id": r["id"],
+            "username": r["username"],
+            "active": bool(r["active"]),
+            "created_at": r["created_at"],
+        }
         for r in rows
     ]
 
@@ -289,6 +297,7 @@ def delete_admin_user(user_id: int, db_path: str | None = None) -> bool:
 # ---------------------------------------------------------------------------
 # Activity Tracking (SQLite-based, supplementing activity.json)
 # ---------------------------------------------------------------------------
+
 
 def record_activity(
     tool: str,
@@ -353,13 +362,11 @@ def get_activity_log(
             (*params, limit),
         ).fetchall()
 
-        summary = conn.execute(
-            """SELECT
+        summary = conn.execute("""SELECT
                  COUNT(*) as total,
                  SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count,
                  SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as error_count
-               FROM api_usage"""
-        ).fetchone()
+               FROM api_usage""").fetchone()
 
     return {
         "events": [
@@ -389,8 +396,10 @@ def get_activity_log(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _json_dumps(obj: Any) -> str:
     import json
+
     return json.dumps(obj, ensure_ascii=False)
 
 
@@ -398,6 +407,7 @@ def _json_loads(s: str | None) -> Any:
     if not s:
         return None
     import json
+
     try:
         return json.loads(s)
     except (json.JSONDecodeError, TypeError):

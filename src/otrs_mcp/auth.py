@@ -1,6 +1,7 @@
 """Modulo de autenticacao para o OTRS MCP Server.
 
 Fornece JWT para o frontend (admin login) e verificacao de API key para agentes.
+Suporta ambos os mecanismos de autenticacao nos endpoints de tickets.
 """
 
 import logging
@@ -20,9 +21,18 @@ logger = logging.getLogger(__name__)
 # Config
 # ---------------------------------------------------------------------------
 
-JWT_SECRET = os.getenv("OTRS_JWT_SECRET", "change-me-in-production-use-a-real-secret")
+JWT_SECRET = os.getenv("OTRS_JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.getenv("OTRS_JWT_EXPIRE_MINUTES", "480"))  # 8 hours
+
+if not JWT_SECRET:
+    logger.warning(
+        "OTRS_JWT_SECRET nao definido. Um segredo aleatorio sera gerado. "
+        "Defina OTRS_JWT_SECRET para persistencia de tokens entre reinicios."
+    )
+    import secrets as _secrets
+
+    JWT_SECRET = _secrets.token_hex(32)
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -30,6 +40,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 # ---------------------------------------------------------------------------
 # JWT Helpers
 # ---------------------------------------------------------------------------
+
 
 def create_access_token(
     user_id: int, username: str, expires_delta: timedelta | None = None
@@ -64,9 +75,24 @@ def decode_access_token(token: str) -> dict[str, Any]:
         )
 
 
+def _extract_bearer_token(
+    credentials: HTTPAuthorizationCredentials | None,
+) -> str | None:
+    """Extrai o token do header Authorization: Bearer."""
+    if credentials and credentials.credentials:
+        return credentials.credentials
+    return None
+
+
+def _is_jwt(token: str) -> bool:
+    """Verifica se um token parece JWT (tem 3 partes separadas por .")."""
+    return token.count(".") == 2
+
+
 # ---------------------------------------------------------------------------
 # FastAPI Dependencies
 # ---------------------------------------------------------------------------
+
 
 async def get_current_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
@@ -93,31 +119,47 @@ async def get_current_admin(
 async def get_api_key_identity(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> dict[str, Any]:
-    """Dependency que valida API key (X-API-Key header ou Bearer token) e retorna a identidade do agente."""
-    api_key = None
+    """Dependency que valida API key para endpoints de tickets.
 
-    # Tentar via Bearer token (para agentes que usam Authorization header)
-    if credentials:
-        api_key = credentials.credentials
-
-    if not api_key:
+    Suporta:
+    - API key via Authorization: Bearer sk-otrs-...
+    - Admin JWT via Authorization: Bearer eyJ...
+    """
+    token = _extract_bearer_token(credentials)
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key necessaria (header X-API-Key ou Authorization: Bearer)",
+            detail="Autenticacao necessaria (API key ou JWT de admin)",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    identity = verify_api_key(api_key)
+    # Se parece JWT, validar como admin
+    if _is_jwt(token):
+        payload = decode_access_token(token)
+        if payload.get("type") == "admin":
+            return {
+                "id": None,
+                "name": f"admin:{payload.get('username')}",
+                "agent_name": payload.get("username", "admin"),
+                "permissions": ["read", "write", "admin"],
+                "rate_limit": 0,
+                "is_admin": True,
+            }
+
+    # Caso contrario, tratar como API key
+    identity = verify_api_key(token)
     if identity is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key invalida, inativa ou expirada",
         )
 
+    identity["is_admin"] = False
     return identity
 
 
 def require_permission(permission: str):
-    """Factory de dependency que verifica se a API key tem uma permissao especifica."""
+    """Factory de dependency que verifica se a identidade tem uma permissao especifica."""
 
     async def _check(
         identity: dict[str, Any] = Depends(get_api_key_identity),

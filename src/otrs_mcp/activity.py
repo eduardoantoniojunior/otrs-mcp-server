@@ -7,6 +7,7 @@ para o frontend via API REST.
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -43,22 +44,26 @@ def _empty_summary() -> dict:
 
 def _rebuild_summary(events: list[dict]) -> dict:
     summary = _empty_summary()
-    cutoff = time.time() - 86400
+    cutoff_epoch = time.time() - 86400
 
     for event in events:
         tool = event.get("tool", "unknown")
         status = event.get("status", "error")
-        ts = event.get("timestamp", 0)
+        ts_iso = event.get("timestamp_iso", "")
 
         summary["total_calls"] += 1
         summary["by_tool"][tool] = summary["by_tool"].get(tool, 0) + 1
         summary["by_status"][status] = summary["by_status"].get(status, 0) + 1
 
-        if ts >= cutoff:
-            summary["last_24h"]["calls"] += 1
-            summary["last_24h"]["by_tool"][tool] = (
-                summary["last_24h"]["by_tool"].get(tool, 0) + 1
-            )
+        try:
+            event_time = datetime.fromisoformat(ts_iso).timestamp()
+            if event_time >= cutoff_epoch:
+                summary["last_24h"]["calls"] += 1
+                summary["last_24h"]["by_tool"][tool] = (
+                    summary["last_24h"]["by_tool"].get(tool, 0) + 1
+                )
+        except (ValueError, TypeError):
+            pass
 
     return summary
 
@@ -98,7 +103,17 @@ def record_tool_call(
         data["summary"] = _rebuild_summary(data["events"])
 
         try:
-            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, str(path))
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
         except OSError as e:
             logger.error("Erro ao salvar atividade: %s", e)
 
@@ -147,6 +162,16 @@ def clear_activity() -> None:
     with _lock:
         data = {"events": [], "summary": _empty_summary()}
         try:
-            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, str(path))
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
         except OSError as e:
             logger.error("Erro ao limpar atividade: %s", e)

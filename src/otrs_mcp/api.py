@@ -2,18 +2,19 @@
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from otrs_mcp.activity import clear_activity, get_activity, get_summary
 from otrs_mcp.auth import get_api_key_identity, require_permission
 from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
 from otrs_mcp.constants import VALID_PRIORITIES
-from otrs_mcp.activity import get_activity, get_summary, clear_activity
 from otrs_mcp.database import init_db, record_activity
 from otrs_mcp.exceptions import (
     OTRSAPIError,
@@ -36,12 +37,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Criar admin padrao se nao existir
     from otrs_mcp.database import create_admin_user, list_admin_users
+
     try:
         if not list_admin_users():
-            default_user = os.getenv("OTRS_ADMIN_USER", "admin")
-            default_pass = os.getenv("OTRS_ADMIN_PASSWORD", "admin123")
-            create_admin_user(default_user, default_pass)
-            logger.info("Usuario admin padrao criado: %s", default_user)
+            default_pass = os.getenv("OTRS_ADMIN_PASSWORD")
+            if not default_pass:
+                logger.error(
+                    "OTRS_ADMIN_PASSWORD nao definido. Nenhum usuario admin sera criado automaticamente."
+                )
+            else:
+                default_user = os.getenv("OTRS_ADMIN_USER", "admin")
+                create_admin_user(default_user, default_pass)
+                logger.info("Usuario admin padrao criado: %s", default_user)
     except Exception as e:
         logger.warning("Erro ao criar admin padrao: %s", e)
 
@@ -50,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _client = OTRSClient(config)
     logger.info("API iniciada com conexao ao OTRS: %s", config.base_url)
     yield
+    await _client.close()
     logger.info("API encerrada")
 
 
@@ -60,10 +68,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-cors_origins = os.getenv("OTRS_CORS_ORIGINS", "http://localhost:5173,http://localhost:8080").split(",")
+cors_origins = os.getenv(
+    "OTRS_CORS_ORIGINS", "http://localhost:5173,http://localhost:8080"
+).split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["*"],
@@ -80,27 +90,28 @@ def _get_client() -> OTRSClient:
 
 
 class TicketCreate(BaseModel):
-    title: str
-    body: str
-    queue: str | None = None
-    priority: str | None = None
-    state: str | None = None
-    customer_user: str | None = None
-    ticket_type: str | None = None
+    title: str = Field(..., min_length=1, max_length=255)
+    body: str = Field(..., min_length=1)
+    queue: str | None = Field(None, max_length=100)
+    priority: str | None = Field(None, max_length=50)
+    state: str | None = Field(None, max_length=50)
+    customer_user: str | None = Field(None, max_length=100)
+    ticket_type: str | None = Field(None, max_length=50)
 
 
 class TicketUpdate(BaseModel):
-    title: str | None = None
-    queue: str | None = None
-    priority: str | None = None
-    state: str | None = None
-    customer_user: str | None = None
-    owner: str | None = None
+    title: str | None = Field(None, max_length=255)
+    queue: str | None = Field(None, max_length=100)
+    priority: str | None = Field(None, max_length=50)
+    state: str | None = Field(None, max_length=50)
+    customer_user: str | None = Field(None, max_length=100)
+    owner: str | None = Field(None, max_length=100)
 
 
 # ---------------------------------------------------------------------------
 # Health (publico)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/health")
 async def health_check() -> dict[str, str]:
@@ -110,6 +121,7 @@ async def health_check() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Tickets (requer API key)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/tickets")
 async def list_tickets(
@@ -159,7 +171,9 @@ async def get_ticket(
         return await client.get_ticket(ticket_id=ticket_id)
     except OTRSTicketNotFoundError as e:
         logger.error("Ticket %s nao encontrado: %s", ticket_id, e)
-        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} nao encontrado")
+        raise HTTPException(
+            status_code=404, detail=f"Ticket {ticket_id} nao encontrado"
+        )
     except OTRSConnectionError as e:
         logger.error("Erro de conexao ao obter ticket %s: %s", ticket_id, e)
         raise HTTPException(status_code=503, detail="Servico OTRS indisponivel")
@@ -180,7 +194,10 @@ async def create_ticket(
     identity: dict[str, Any] = Depends(require_permission("write")),
 ) -> dict:
     client = _get_client()
-    if ticket.priority and ticket.priority.lower() not in {p.lower() for p in VALID_PRIORITIES}:
+    start = time.monotonic()
+    if ticket.priority and ticket.priority.lower() not in {
+        p.lower() for p in VALID_PRIORITIES
+    }:
         raise HTTPException(
             status_code=422,
             detail=f"Prioridade invalida: '{ticket.priority}'. Valores validos: {', '.join(sorted(VALID_PRIORITIES))}",
@@ -195,10 +212,11 @@ async def create_ticket(
             customer_user=ticket.customer_user,
             ticket_type=ticket.ticket_type,
         )
+        elapsed = (time.monotonic() - start) * 1000
         record_activity(
             tool="create_ticket",
             status="success",
-            duration_ms=0,
+            duration_ms=elapsed,
             api_key_id=identity.get("id"),
             agent_name=identity.get("agent_name"),
             params={"title": ticket.title, "queue": ticket.queue},
@@ -226,7 +244,10 @@ async def update_ticket(
     identity: dict[str, Any] = Depends(require_permission("write")),
 ) -> dict:
     client = _get_client()
-    if ticket.priority and ticket.priority.lower() not in {p.lower() for p in VALID_PRIORITIES}:
+    start = time.monotonic()
+    if ticket.priority and ticket.priority.lower() not in {
+        p.lower() for p in VALID_PRIORITIES
+    }:
         raise HTTPException(
             status_code=422,
             detail=f"Prioridade invalida: '{ticket.priority}'. Valores validos: {', '.join(sorted(VALID_PRIORITIES))}",
@@ -241,10 +262,11 @@ async def update_ticket(
             customer_user=ticket.customer_user,
             owner=ticket.owner,
         )
+        elapsed = (time.monotonic() - start) * 1000
         record_activity(
             tool="update_ticket",
             status="success",
-            duration_ms=0,
+            duration_ms=elapsed,
             api_key_id=identity.get("id"),
             agent_name=identity.get("agent_name"),
             params={"ticket_id": ticket_id},
@@ -253,7 +275,9 @@ async def update_ticket(
         return result
     except OTRSTicketNotFoundError as e:
         logger.error("Ticket %s nao encontrado ao atualizar: %s", ticket_id, e)
-        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} nao encontrado")
+        raise HTTPException(
+            status_code=404, detail=f"Ticket {ticket_id} nao encontrado"
+        )
     except OTRSConnectionError as e:
         logger.error("Erro de conexao ao atualizar ticket %s: %s", ticket_id, e)
         raise HTTPException(status_code=503, detail="Servico OTRS indisponivel")
@@ -278,46 +302,69 @@ async def get_ticket_history(
         return await client.get_ticket_history(ticket_id=ticket_id)
     except OTRSTicketNotFoundError as e:
         logger.error("Ticket %s nao encontrado ao buscar historico: %s", ticket_id, e)
-        raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} nao encontrado")
+        raise HTTPException(
+            status_code=404, detail=f"Ticket {ticket_id} nao encontrado"
+        )
     except OTRSConnectionError as e:
-        logger.error("Erro de conexao ao obter historico do ticket %s: %s", ticket_id, e)
+        logger.error(
+            "Erro de conexao ao obter historico do ticket %s: %s", ticket_id, e
+        )
         raise HTTPException(status_code=503, detail="Servico OTRS indisponivel")
     except OTRSAuthenticationError as e:
-        logger.error("Erro de autenticacao ao obter historico do ticket %s: %s", ticket_id, e)
+        logger.error(
+            "Erro de autenticacao ao obter historico do ticket %s: %s", ticket_id, e
+        )
         raise HTTPException(status_code=401, detail="Credenciais OTRS invalidas")
     except OTRSAPIError as e:
-        logger.error("Erro da API OTRS ao obter historico do ticket %s: %s", ticket_id, e)
+        logger.error(
+            "Erro da API OTRS ao obter historico do ticket %s: %s", ticket_id, e
+        )
         raise HTTPException(status_code=502, detail=f"Erro na API OTRS: {str(e)}")
     except Exception as e:
-        logger.error("Erro inesperado ao obter historico do ticket %s: %s", ticket_id, e)
+        logger.error(
+            "Erro inesperado ao obter historico do ticket %s: %s", ticket_id, e
+        )
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
 
 
 # ---------------------------------------------------------------------------
-# Activity (publico para o frontend, protegido pelo admin)
+# Activity (requer autenticacao)
 # ---------------------------------------------------------------------------
+
 
 @app.get("/api/activity")
 async def list_activity(
     limit: int = Query(50, ge=1, le=500),
     tool: str | None = Query(None),
     status: str | None = Query(None),
+    identity: dict[str, Any] = Depends(get_api_key_identity),
 ) -> dict:
     return get_activity(limit=limit, tool_filter=tool, status_filter=status)
 
 
 @app.get("/api/activity/summary")
-async def activity_summary() -> dict:
+async def activity_summary(
+    identity: dict[str, Any] = Depends(get_api_key_identity),
+) -> dict:
     return get_summary()
 
 
 @app.delete("/api/activity")
-async def reset_activity() -> dict[str, str]:
+async def reset_activity(
+    identity: dict[str, Any] = Depends(require_permission("write")),
+) -> dict[str, str]:
     clear_activity()
     return {"status": "ok", "message": "Atividade limpa com sucesso"}
 
 
 if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=3000)
+
+
+def run_server() -> None:
+    """Entry point para o CLI otrs-mcp-api."""
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=3000)

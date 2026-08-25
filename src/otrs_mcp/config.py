@@ -38,7 +38,9 @@ class OTRSConfig(BaseSettings):
             self.web_base_url = self.base_url.rsplit("/nph-genericinterface.pl", 1)[0]
 
     def get_ticket_web_url(self, ticket_id: str) -> str:
-        return f"{self.web_base_url}/index.pl?Action=AgentTicketZoom;TicketID={ticket_id}"
+        return (
+            f"{self.web_base_url}/index.pl?Action=AgentTicketZoom;TicketID={ticket_id}"
+        )
 
     def get_ticket_history_web_url(self, ticket_id: str) -> str:
         return f"{self.web_base_url}/index.pl?Action=AgentTicketHistory;TicketID={ticket_id}"

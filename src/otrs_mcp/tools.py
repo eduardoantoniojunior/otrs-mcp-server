@@ -59,6 +59,17 @@ async def create_ticket(
     config = _get_config()
 
     resolved_queue = queue if queue in VALID_QUEUES else config.default_queue
+    if queue and queue not in VALID_QUEUES:
+        record_tool_call(
+            tool="create_ticket",
+            status="error",
+            duration_ms=0,
+            params={"title": title, "queue": queue, "priority": priority},
+            error=f"Fila invalida: {queue}",
+        )
+        raise OTRSValidationError(
+            f"Fila invalida: '{queue}'. Valores validos: {', '.join(sorted(VALID_QUEUES))}"
+        )
     resolved_priority = priority or config.default_priority
 
     if priority and priority.lower() not in {p.lower() for p in VALID_PRIORITIES}:
@@ -89,7 +100,11 @@ async def create_ticket(
             tool="create_ticket",
             status="success",
             duration_ms=elapsed,
-            params={"title": title, "queue": resolved_queue, "priority": resolved_priority},
+            params={
+                "title": title,
+                "queue": resolved_queue,
+                "priority": resolved_priority,
+            },
             ticket_id=_extract_ticket_id(result),
         )
         return result
@@ -99,7 +114,11 @@ async def create_ticket(
             tool="create_ticket",
             status="error",
             duration_ms=elapsed,
-            params={"title": title, "queue": resolved_queue, "priority": resolved_priority},
+            params={
+                "title": title,
+                "queue": resolved_queue,
+                "priority": resolved_priority,
+            },
             error=str(e),
         )
         raise

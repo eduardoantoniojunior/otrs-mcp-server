@@ -22,7 +22,10 @@ class TestOTRSConfig:
         }
         with patch.dict(os.environ, env_vars, clear=True):
             config = OTRSConfig()
-            assert config.base_url == "https://otrs.example.com/otrs/nph-genericinterface.pl/Webservice/Test"
+            assert (
+                config.base_url
+                == "https://otrs.example.com/otrs/nph-genericinterface.pl/Webservice/Test"
+            )
             assert config.username == "user"
             assert config.password == "pass"
             assert config.verify_ssl is True
@@ -65,7 +68,9 @@ class TestOTRSConfig:
     def test_config_missing_all_required(self) -> None:
         """Configuracao sem nenhuma variavel obrigatoria deve levantar erro."""
         with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(OTRSValidationError, match="OTRS_BASE_URL, OTRS_USERNAME, OTRS_PASSWORD"):
+            with pytest.raises(
+                OTRSValidationError, match="OTRS_BASE_URL, OTRS_USERNAME, OTRS_PASSWORD"
+            ):
                 OTRSConfig()
 
     def test_config_web_base_url_derived(self) -> None:
@@ -128,7 +133,10 @@ class TestOTRSConfig:
         with patch.dict(os.environ, env_vars, clear=True):
             config = OTRSConfig()
             url = config.get_ticket_web_url("123")
-            assert url == "https://otrs.example.com/otrs/index.pl?Action=AgentTicketZoom;TicketID=123"
+            assert (
+                url
+                == "https://otrs.example.com/otrs/index.pl?Action=AgentTicketZoom;TicketID=123"
+            )
 
     def test_get_ticket_history_web_url(self) -> None:
         """get_ticket_history_web_url deve retornar URL correta."""
@@ -141,7 +149,10 @@ class TestOTRSConfig:
         with patch.dict(os.environ, env_vars, clear=True):
             config = OTRSConfig()
             url = config.get_ticket_history_web_url("456")
-            assert url == "https://otrs.example.com/otrs/index.pl?Action=AgentTicketHistory;TicketID=456"
+            assert (
+                url
+                == "https://otrs.example.com/otrs/index.pl?Action=AgentTicketHistory;TicketID=456"
+            )
 
     def test_get_ticket_search_web_url(self) -> None:
         """get_ticket_search_web_url deve retornar URL correta."""
@@ -154,4 +165,6 @@ class TestOTRSConfig:
         with patch.dict(os.environ, env_vars, clear=True):
             config = OTRSConfig()
             url = config.get_ticket_search_web_url()
-            assert url == "https://otrs.example.com/otrs/index.pl?Action=AgentTicketSearch"
+            assert (
+                url == "https://otrs.example.com/otrs/index.pl?Action=AgentTicketSearch"
+            )

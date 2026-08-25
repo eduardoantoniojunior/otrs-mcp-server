@@ -15,7 +15,9 @@ class TestTicketResource:
     """Testes para o resource ticket_resource."""
 
     @pytest.mark.asyncio
-    async def test_ticket_resource_success(self, initialized_tools, mock_client) -> None:
+    async def test_ticket_resource_success(
+        self, initialized_tools, mock_client
+    ) -> None:
         """ticket_resource deve retornar JSON do ticket."""
         result = await ticket_resource(ticket_id="123")
 
@@ -39,7 +41,9 @@ class TestTicketHistoryResource:
     """Testes para o resource ticket_history_resource."""
 
     @pytest.mark.asyncio
-    async def test_ticket_history_resource_success(self, initialized_tools, mock_client) -> None:
+    async def test_ticket_history_resource_success(
+        self, initialized_tools, mock_client
+    ) -> None:
         """ticket_history_resource deve retornar JSON do historico."""
         result = await ticket_history_resource(ticket_id="123")
 
@@ -49,7 +53,9 @@ class TestTicketHistoryResource:
         assert "History" in data
 
     @pytest.mark.asyncio
-    async def test_ticket_history_resource_error(self, initialized_tools, mock_client) -> None:
+    async def test_ticket_history_resource_error(
+        self, initialized_tools, mock_client
+    ) -> None:
         """ticket_history_resource deve tratar erros."""
         mock_client.get_ticket_history.side_effect = Exception("Connection error")
 
@@ -63,7 +69,9 @@ class TestSearchTicketsResource:
     """Testes para o resource search_tickets_resource."""
 
     @pytest.mark.asyncio
-    async def test_search_tickets_resource_success(self, initialized_tools, mock_client) -> None:
+    async def test_search_tickets_resource_success(
+        self, initialized_tools, mock_client
+    ) -> None:
         """search_tickets_resource deve retornar JSON dos tickets."""
         result = await search_tickets_resource()
 
@@ -72,7 +80,9 @@ class TestSearchTicketsResource:
         assert "TicketID" in data
 
     @pytest.mark.asyncio
-    async def test_search_tickets_resource_error(self, initialized_tools, mock_client) -> None:
+    async def test_search_tickets_resource_error(
+        self, initialized_tools, mock_client
+    ) -> None:
         """search_tickets_resource deve tratar erros."""
         mock_client.search_tickets.side_effect = Exception("Connection error")
 

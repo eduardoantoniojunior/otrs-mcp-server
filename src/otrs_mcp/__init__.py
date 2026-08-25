@@ -11,7 +11,7 @@ from otrs_mcp.activity import get_activity, get_summary, record_tool_call
 from otrs_mcp.auth import create_access_token, get_api_key_identity, get_current_admin
 from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
-from otrs_mcp.database import init_db, create_api_key, verify_api_key
+from otrs_mcp.database import create_api_key, init_db, verify_api_key
 from otrs_mcp.tools import mcp
 
 __all__ = [

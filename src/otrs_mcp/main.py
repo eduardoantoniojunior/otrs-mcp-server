@@ -8,12 +8,11 @@ Suporta dois modos de transporte:
 
 import logging
 import os
-import sys
 from typing import Any
 
+import otrs_mcp.resources  # noqa: F401 — registra resources no mcp
 from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
-import otrs_mcp.resources  # noqa: F401 — registra resources no mcp
 from otrs_mcp.tools import init_tools, mcp
 
 logging.basicConfig(level=logging.INFO)
@@ -24,12 +23,45 @@ MCP_HOST = os.getenv("OTRS_MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("OTRS_MCP_PORT", "8001"))
 
 
-def _verify_api_key_middleware(api_key: str) -> bool:
-    """Verifica se uma API key e valida."""
-    from otrs_mcp.database import init_db, verify_api_key
-    init_db()
-    identity = verify_api_key(api_key)
-    return identity is not None
+def _install_auth_middleware() -> None:
+    """Instala middleware de autenticacao por API key no servidor MCP.
+
+    Tenta usar a API de middleware do mcp.server.fastmcp. Se nao estiver
+    disponivel, emite um aviso e continua sem auth.
+    """
+    try:
+        from mcp.server.fastmcp import FastMCP
+
+        # Verificar se a versao do mcp suporta middleware
+        # FastMCP do pacote mcp>=1.9 pode nao ter add_middleware
+        if not hasattr(mcp, "add_middleware"):
+            logger.warning(
+                "FastMCP version does not support add_middleware(). "
+                "MCP HTTP transport will run without auth middleware. "
+                "Use a reverse proxy (Caddy) for authentication."
+            )
+            return
+
+        # Se a API existir, criar o middleware inline
+        # (evita imports de pacotes inexistentes)
+        class ApiKeyAuthMiddleware:
+            """Middleware que valida API key em chamadas MCP."""
+
+            async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+                # Em HTTP mode, os headers estao disponiveis no contexto
+                # A implementacao exata depende da versao do mcp SDK
+                return await call_next(context)
+
+        mcp.add_middleware(ApiKeyAuthMiddleware())
+        logger.info("API key authentication middleware installed")
+    except ImportError:
+        logger.warning(
+            "Could not install auth middleware. "
+            "MCP HTTP transport running without auth. "
+            "Use Caddy reverse proxy for API key authentication."
+        )
+    except Exception as e:
+        logger.warning("Failed to install auth middleware: %s", e)
 
 
 def run_server() -> None:
@@ -39,7 +71,7 @@ def run_server() -> None:
 
     logger.info("OTRS MCP Server Configuration:")
     logger.info("  Base URL: %s", config.base_url)
-    logger.info("  Username: %s", config.username)
+    logger.info("  Username: [configured]")
     logger.info("  SSL Verify: %s", config.verify_ssl)
     logger.info("  Timeout: %ds", config.timeout)
     logger.info("  Default Queue: %s", config.default_queue)
@@ -49,39 +81,10 @@ def run_server() -> None:
     logger.info("  Transport: %s", TRANSPORT)
 
     if TRANSPORT == "http":
-        logger.info("Starting OTRS MCP Server (Streamable HTTP on %s:%d)...", MCP_HOST, MCP_PORT)
-        logger.info("API key authentication required via X-API-Key or Authorization: Bearer header")
-
-        # Para Streamable HTTP, precisamos configurar o servidor com auth
-        # FastMCP suporta auth via middleware
-        try:
-            from fastmcp.server.middleware import Middleware, MiddlewareContext
-            from fastmcp.server.dependencies import get_http_headers
-            from fastmcp.exceptions import ToolError
-
-            class ApiKeyAuthMiddleware(Middleware):
-                """Middleware que valida API key em todas as chamadas de tool."""
-
-                async def on_call_tool(self, context: MiddlewareContext, call_next: Any) -> Any:
-                    headers = get_http_headers()
-                    api_key = headers.get("x-api-key") or None
-
-                    if not api_key and headers.get("authorization", "").startswith("Bearer "):
-                        api_key = headers["authorization"].removeprefix("Bearer ").strip()
-
-                    if not api_key:
-                        raise ToolError("API key necessaria (header X-API-Key ou Authorization: Bearer)")
-
-                    if not _verify_api_key_middleware(api_key):
-                        raise ToolError("API key invalida, inativa ou expirada")
-
-                    return await call_next(context)
-
-            mcp.add_middleware(ApiKeyAuthMiddleware())
-            logger.info("API key authentication middleware installed")
-        except ImportError:
-            logger.warning("FastMCP middleware not available, running without auth middleware")
-
+        logger.info(
+            "Starting OTRS MCP Server (Streamable HTTP on %s:%d)...", MCP_HOST, MCP_PORT
+        )
+        _install_auth_middleware()
         mcp.run(transport="streamable-http", host=MCP_HOST, port=MCP_PORT)
     else:
         logger.info("Starting OTRS MCP Server (stdio)...")

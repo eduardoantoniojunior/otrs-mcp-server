@@ -3,7 +3,7 @@
 import json
 import logging
 
-from otrs_mcp.tools import mcp, _get_client
+from otrs_mcp.tools import _get_client, mcp
 
 logger = logging.getLogger(__name__)
 
