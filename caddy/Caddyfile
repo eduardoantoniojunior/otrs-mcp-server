@@ -1,0 +1,32 @@
+{
+	{$EMAIL}
+}
+
+{$DOMAIN} {
+	# Security headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# API REST
+	@api path /api/*
+	handle @api {
+		reverse_proxy api:3000
+	}
+
+	# MCP Server (Streamable HTTP)
+	@mcp path /mcp/*
+	handle @mcp {
+		reverse_proxy mcp-server:8001
+	}
+
+	# Frontend (SPA)
+	handle {
+		reverse_proxy frontend:80
+	}
+}

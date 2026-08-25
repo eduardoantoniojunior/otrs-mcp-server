@@ -10,13 +10,33 @@ import type {
 
 const API_BASE = '/api';
 
+function getToken(): string | null {
+  return localStorage.getItem('otrs_token');
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string> || {}),
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(`${API_BASE}${url}`, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
     ...options,
+    headers,
   });
+
+  if (response.status === 401) {
+    localStorage.removeItem('otrs_token');
+    localStorage.removeItem('otrs_user');
+    window.location.href = '/login';
+    throw new Error('Sessao expirada');
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(error.detail || 'Erro na requisicao');
@@ -27,6 +47,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ status: string }>('/health'),
 
+  // Tickets
   searchTickets: (params: {
     customer_user?: string;
     queue?: string;
@@ -63,6 +84,7 @@ export const api = {
   getTicketHistory: (ticketId: string) =>
     request<TicketHistory>(`/tickets/${ticketId}/history`),
 
+  // Activity
   getActivity: (params: {
     limit?: number;
     tool?: string;
@@ -83,6 +105,65 @@ export const api = {
 
   clearActivity: () =>
     request<{ status: string; message: string }>('/activity', {
+      method: 'DELETE',
+    }),
+
+  // Admin - API Keys
+  listApiKeys: (includeInactive = false) =>
+    request<Array<{
+      id: number;
+      name: string;
+      key_prefix: string;
+      agent_name: string;
+      permissions: string[];
+      active: boolean;
+      usage_count: number;
+      last_used_at: string | null;
+      created_at: string;
+      expires_at: string | null;
+    }>>(`/admin/keys?include_inactive=${includeInactive}`),
+
+  createApiKey: (data: {
+    name: string;
+    agent_name: string;
+    permissions?: string[];
+    expires_in_days?: number;
+  }) =>
+    request<{
+      id: number;
+      key: string;
+      key_prefix: string;
+      name: string;
+      agent_name: string;
+    }>('/admin/keys', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  revokeApiKey: (id: number) =>
+    request<{ status: string; message: string }>(`/admin/keys/${id}/revoke`, {
+      method: 'PATCH',
+    }),
+
+  deleteApiKey: (id: number) =>
+    request<{ status: string; message: string }>(`/admin/keys/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Admin - Users
+  listUsers: () =>
+    request<Array<{ id: number; username: string; active: boolean; created_at: string }>>(
+      '/admin/users'
+    ),
+
+  createUser: (data: { username: string; password: string }) =>
+    request<{ id: number; username: string }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteUser: (id: number) =>
+    request<{ status: string; message: string }>(`/admin/users/${id}`, {
       method: 'DELETE',
     }),
 };

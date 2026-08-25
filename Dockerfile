@@ -31,7 +31,7 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/src" \
     PYTHONFAULTHANDLER=1
 
-RUN chown -R otrs:otrs /app
+RUN mkdir -p /data && chown -R otrs:otrs /app /data
 USER otrs
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
@@ -41,7 +41,7 @@ CMD ["python", "-m", "otrs_mcp.main"]
 
 LABEL org.opencontainers.image.title="OTRS MCP Server" \
       org.opencontainers.image.description="Model Context Protocol server for OTRS integration" \
-      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.version="0.2.0" \
       org.opencontainers.image.authors="Eduardo Antonio" \
       org.opencontainers.image.source="https://github.com/eduardoantoniojunior/otrs-mcp-server" \
       org.opencontainers.image.licenses="Apache-2.0" \
