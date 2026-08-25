@@ -4,6 +4,7 @@ export interface Ticket {
   State: string;
   Priority: string;
   Queue: string;
+  Type?: string;
   CustomerUser?: string;
   Owner?: string;
   Created?: string;
