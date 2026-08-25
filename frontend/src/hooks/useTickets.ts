@@ -11,6 +11,14 @@ export function useHealth() {
   });
 }
 
+export function useConfig() {
+  return useQuery({
+    queryKey: ['config'],
+    queryFn: () => api.getConfig(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
+
 export function useTickets(params: {
   customer_user?: string;
   queue?: string;

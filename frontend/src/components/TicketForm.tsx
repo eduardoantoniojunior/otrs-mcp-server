@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useTicket, useCreateTicket, useUpdateTicket } from '../hooks/useTickets';
+import { useTicket, useCreateTicket, useUpdateTicket, useConfig } from '../hooks/useTickets';
 import { ArrowLeft } from 'lucide-react';
 
 export default function TicketForm() {
@@ -8,24 +8,36 @@ export default function TicketForm() {
   const navigate = useNavigate();
   const isEditing = !!id;
 
+  const { data: config } = useConfig();
   const { data: existingTicket } = useTicket(id ?? '');
   const createTicket = useCreateTicket();
   const updateTicket = useUpdateTicket();
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [queue, setQueue] = useState('Raw');
+  const [queue, setQueue] = useState('');
   const [priority, setPriority] = useState('3 normal');
   const [state, setState] = useState('new');
   const [customerUser, setCustomerUser] = useState('');
+  const [ticketType, setTicketType] = useState('');
+
+  // Sincroniza estado com o config quando carrega (para setar os default)
+  useEffect(() => {
+    if (!isEditing && config) {
+      if (config.valid_queues.length > 0 && !queue) setQueue(config.valid_queues[0]);
+      if (config.valid_types.length > 0 && !ticketType) setTicketType(config.valid_types[0]);
+    }
+  }, [config, isEditing]);
 
   useEffect(() => {
     if (existingTicket && isEditing) {
       setTitle(existingTicket.Title ?? '');
-      setQueue(existingTicket.Queue ?? 'Raw');
+      setQueue(existingTicket.Queue ?? '');
       setPriority(existingTicket.Priority ?? '3 normal');
       setState(existingTicket.State ?? 'new');
       setCustomerUser(existingTicket.CustomerUser ?? '');
+      // existingTicket doesn't always have Type, but if it does:
+      if (existingTicket.Type) setTicketType(existingTicket.Type);
     }
   }, [existingTicket, isEditing]);
 
@@ -45,6 +57,7 @@ export default function TicketForm() {
           queue,
           priority,
           state,
+          ticket_type: ticketType || undefined,
           customer_user: customerUser || undefined,
         });
         navigate(`/tickets/${result.TicketID}`);
@@ -94,13 +107,23 @@ export default function TicketForm() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fila</label>
-              <input
-                type="text"
-                value={queue}
-                onChange={(e) => setQueue(e.target.value)}
-                placeholder="Ex: Suporte"
-                className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              {config?.valid_queues && config.valid_queues.length > 0 ? (
+                <select
+                  value={queue}
+                  onChange={(e) => setQueue(e.target.value)}
+                  className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {config.valid_queues.map(q => <option key={q} value={q}>{q}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={queue}
+                  onChange={(e) => setQueue(e.target.value)}
+                  placeholder="Ex: Suporte"
+                  className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Prioridade</label>
@@ -136,15 +159,37 @@ export default function TicketForm() {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cliente (email)</label>
-            <input
-              type="text"
-              value={customerUser}
-              onChange={(e) => setCustomerUser(e.target.value)}
-              placeholder="opcional"
-              className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              {config?.valid_types && config.valid_types.length > 0 ? (
+                <select
+                  value={ticketType}
+                  onChange={(e) => setTicketType(e.target.value)}
+                  className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {config.valid_types.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={ticketType}
+                  onChange={(e) => setTicketType(e.target.value)}
+                  placeholder="Opcional (ex: Incident)"
+                  className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cliente (email)</label>
+              <input
+                type="text"
+                value={customerUser}
+                onChange={(e) => setCustomerUser(e.target.value)}
+                placeholder="opcional"
+                className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
         </div>
 

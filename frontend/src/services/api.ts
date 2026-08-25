@@ -46,6 +46,8 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string }>('/health'),
+  
+  getConfig: () => request<{ valid_queues: string[]; valid_types: string[] }>('/config'),
 
   // Tickets
   searchTickets: (params: {

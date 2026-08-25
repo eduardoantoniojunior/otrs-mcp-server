@@ -118,6 +118,15 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/config")
+async def get_config() -> dict[str, Any]:
+    config = OTRSConfig()
+    return {
+        "valid_queues": [q.strip() for q in config.valid_queues.split(",") if q.strip()],
+        "valid_types": [t.strip() for t in config.valid_types.split(",") if t.strip()],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Tickets (requer API key)
 # ---------------------------------------------------------------------------

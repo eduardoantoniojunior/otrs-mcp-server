@@ -253,15 +253,20 @@ class OTRSClient:
         customer_user: str | None = None,
         ticket_type: str | None = None,
     ) -> dict[str, Any]:
+        ticket_obj = {
+            "Title": title,
+            "Queue": queue or self._config.default_queue,
+            "Priority": priority or self._config.default_priority,
+            "State": state or self._config.default_state,
+            "CustomerUser": customer_user or "Internal",
+        }
+        
+        type_val = ticket_type or self._config.default_type
+        if type_val:
+            ticket_obj["Type"] = type_val
+
         ticket_data = {
-            "Ticket": {
-                "Title": title,
-                "Queue": queue or self._config.default_queue,
-                "Priority": priority or self._config.default_priority,
-                "State": state or self._config.default_state,
-                "Type": ticket_type or self._config.default_type,
-                "CustomerUser": customer_user or "Internal",
-            },
+            "Ticket": ticket_obj,
             "Article": {
                 "Subject": title,
                 "Body": body,

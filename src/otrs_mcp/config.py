@@ -19,8 +19,10 @@ class OTRSConfig(BaseSettings):
     default_queue: str = "Raw"
     default_state: str = "new"
     default_priority: str = "3 normal"
-    default_type: str = "Unclassified"
+    default_type: str = ""
     web_base_url: str = ""
+    valid_queues: str = ""
+    valid_types: str = ""
 
     def model_post_init(self, __context: object) -> None:
         missing = []
