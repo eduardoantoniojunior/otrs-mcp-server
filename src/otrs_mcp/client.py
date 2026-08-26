@@ -272,6 +272,7 @@ class OTRSClient:
                 "Body": body,
                 "ContentType": "text/plain; charset=utf8",
                 "ArticleType": "note-external",
+                "TimeUnit": 1,
             },
         }
         result = await self.request("TicketCreate", ticket_data)
