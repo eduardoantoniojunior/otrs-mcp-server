@@ -10,14 +10,39 @@ export default function TicketList() {
   const [state, setState] = useState('');
   const [priority, setPriority] = useState('');
 
+  const [queryParams, setQueryParams] = useState({
+    title: undefined as string | undefined,
+    customer_id: undefined as string | undefined,
+    queue: undefined as string | undefined,
+    state: undefined as string | undefined,
+    priority: undefined as string | undefined,
+  });
+
   const { data, isLoading, error } = useTickets({
-    title: search || undefined,
-    customer_id: customerId || undefined,
-    queue: queue || undefined,
-    state: state || undefined,
-    priority: priority || undefined,
+    ...queryParams,
     limit: 50,
   });
+
+  const handleSearch = () => {
+    let formattedTitle = search || undefined;
+    if (formattedTitle && !formattedTitle.includes('*')) {
+      formattedTitle = `*${formattedTitle}*`;
+    }
+    
+    setQueryParams({
+      title: formattedTitle,
+      customer_id: customerId || undefined,
+      queue: queue || undefined,
+      state: state || undefined,
+      priority: priority || undefined,
+    });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
 
   const ticketIds = data?.TicketID ?? [];
 
@@ -26,7 +51,7 @@ export default function TicketList() {
       <h1 className="text-2xl font-bold mb-6">Tickets</h1>
 
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
             <input
@@ -34,6 +59,7 @@ export default function TicketList() {
               placeholder="Buscar por titulo..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -43,6 +69,7 @@ export default function TicketList() {
               placeholder="ID da Empresa..."
               value={customerId}
               onChange={(e) => setCustomerId(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -79,6 +106,12 @@ export default function TicketList() {
             <option value="4 high">4 - Alta</option>
             <option value="5 very high">5 - Muito Alta</option>
           </select>
+          <button
+            onClick={handleSearch}
+            className="bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-900 transition-colors text-center"
+          >
+            Buscar
+          </button>
           <Link
             to="/tickets/new"
             className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-center"
