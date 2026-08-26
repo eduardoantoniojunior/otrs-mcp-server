@@ -159,10 +159,10 @@ export default function TicketForm() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-              {config?.valid_types && config.valid_types.length > 0 ? (
+          <div className={`grid ${config?.valid_types && config.valid_types.length > 0 ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+            {config?.valid_types && config.valid_types.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
                 <select
                   value={ticketType}
                   onChange={(e) => setTicketType(e.target.value)}
@@ -170,16 +170,8 @@ export default function TicketForm() {
                 >
                   {config.valid_types.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
-              ) : (
-                <input
-                  type="text"
-                  value={ticketType}
-                  onChange={(e) => setTicketType(e.target.value)}
-                  placeholder="Opcional (ex: Incident)"
-                  className="w-full border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              )}
-            </div>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Cliente (email)</label>
               <input

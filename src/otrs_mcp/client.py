@@ -258,7 +258,7 @@ class OTRSClient:
             "Queue": queue or self._config.default_queue,
             "Priority": priority or self._config.default_priority,
             "State": state or self._config.default_state,
-            "CustomerUser": customer_user or "Internal",
+            "CustomerUser": customer_user or self._config.username,
         }
         
         type_val = ticket_type or self._config.default_type
