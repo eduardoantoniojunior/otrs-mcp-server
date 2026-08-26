@@ -283,6 +283,7 @@ class OTRSClient:
     async def search_tickets(
         self,
         customer_user: str | None = None,
+        customer_id: str | None = None,
         queue: str | None = None,
         state: str | None = None,
         priority: str | None = None,
@@ -299,6 +300,8 @@ class OTRSClient:
         }
         if customer_user:
             search_data["CustomerUserLogin"] = customer_user
+        if customer_id:
+            search_data["CustomerID"] = customer_id
         if queue:
             search_data["Queues"] = [queue]
         if state:

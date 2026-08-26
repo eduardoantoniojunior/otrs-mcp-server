@@ -155,6 +155,7 @@ async def get_ticket(
 @mcp.tool(description="Search for tickets in OTRS")
 async def search_tickets(
     customer_user: str | None = None,
+    customer_id: str | None = None,
     queue: str | None = None,
     state: str | None = None,
     priority: str | None = None,
@@ -168,6 +169,7 @@ async def search_tickets(
     try:
         result = await client.search_tickets(
             customer_user=customer_user,
+            customer_id=customer_id,
             queue=queue,
             state=state,
             priority=priority,

@@ -21,6 +21,7 @@ export function useConfig() {
 
 export function useTickets(params: {
   customer_user?: string;
+  customer_id?: string;
   queue?: string;
   state?: string;
   priority?: string;

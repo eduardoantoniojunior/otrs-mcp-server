@@ -135,6 +135,7 @@ async def get_config() -> dict[str, Any]:
 @app.get("/api/tickets")
 async def list_tickets(
     customer_user: str | None = Query(None),
+    customer_id: str | None = Query(None),
     queue: str | None = Query(None),
     state: str | None = Query(None),
     priority: str | None = Query(None),
@@ -148,6 +149,7 @@ async def list_tickets(
     try:
         return await client.search_tickets(
             customer_user=customer_user,
+            customer_id=customer_id,
             queue=queue,
             state=state,
             priority=priority,

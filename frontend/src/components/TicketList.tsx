@@ -5,12 +5,14 @@ import { Search, ExternalLink } from 'lucide-react';
 
 export default function TicketList() {
   const [search, setSearch] = useState('');
+  const [customerId, setCustomerId] = useState('');
   const [queue, setQueue] = useState('');
   const [state, setState] = useState('');
   const [priority, setPriority] = useState('');
 
   const { data, isLoading, error } = useTickets({
     title: search || undefined,
+    customer_id: customerId || undefined,
     queue: queue || undefined,
     state: state || undefined,
     priority: priority || undefined,
@@ -24,7 +26,7 @@ export default function TicketList() {
       <h1 className="text-2xl font-bold mb-6">Tickets</h1>
 
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
             <input
@@ -33,6 +35,15 @@ export default function TicketList() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="ID da Empresa..."
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <select

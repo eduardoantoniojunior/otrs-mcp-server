@@ -52,6 +52,7 @@ export const api = {
   // Tickets
   searchTickets: (params: {
     customer_user?: string;
+    customer_id?: string;
     queue?: string;
     state?: string;
     priority?: string;
