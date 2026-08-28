@@ -87,7 +87,7 @@ export const api = {
   getTicketHistory: (ticketId: string) =>
     request<TicketHistory>(`/tickets/${ticketId}/history`),
 
-  // Activity
+  // Activity (public, requires API key)
   getActivity: (params: {
     limit?: number;
     tool?: string;
@@ -169,4 +169,39 @@ export const api = {
     request<{ status: string; message: string }>(`/admin/users/${id}`, {
       method: 'DELETE',
     }),
+
+  // Admin - Activity Log (detailed)
+  getAdminActivity: (params: {
+    limit?: number;
+    tool?: string;
+    status?: string;
+    agent?: string;
+  } = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        query.set(key, String(value));
+      }
+    });
+    const qs = query.toString();
+    return request<{
+      events: Array<{
+        id: number;
+        api_key_id: number | null;
+        agent_name: string | null;
+        tool: string;
+        status: string;
+        duration_ms: number;
+        params: Record<string, unknown> | null;
+        error: string | null;
+        ticket_id: string | null;
+        created_at: string;
+      }>;
+      summary: {
+        total: number;
+        success_count: number;
+        error_count: number;
+      };
+    }>(`/admin/activity${qs ? `?${qs}` : ''}`);
+  },
 };

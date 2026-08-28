@@ -1,60 +1,130 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Ticket, Plus, Key, LogOut } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Key,
+  Users,
+  ScrollText,
+  Settings,
+  Terminal,
+  LogOut,
+  Server,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useHealth } from '../hooks/useTickets';
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/tickets', label: 'Tickets', icon: Ticket },
-  { path: '/api-keys', label: 'API Keys', icon: Key },
-  { path: '/tickets/new', label: 'Novo Ticket', icon: Plus },
+const navSections = [
+  {
+    items: [
+      { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/mcp-tokens', label: 'MCP Tokens', icon: Key },
+      { path: '/admin-users', label: 'Admin Users', icon: Users },
+    ],
+  },
+  {
+    items: [
+      { path: '/client-wizard', label: 'Client MCP Wizard', icon: Terminal },
+      { path: '/audit-log', label: 'Audit Log', icon: ScrollText },
+      { path: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
 ];
 
 export default function Layout() {
   const location = useLocation();
   const { user, logout } = useAuth();
+  const { data: healthData } = useHealth();
+
+  const isOnline = healthData?.status === 'ok';
+
+  const isActive = (path: string) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  };
 
   return (
-    <div className="flex h-screen">
-      <aside className="w-64 bg-gray-900 text-white flex flex-col">
-        <div className="p-4 border-b border-gray-700">
-          <h1 className="text-xl font-bold">OTRS MCP</h1>
-          <p className="text-sm text-gray-400">Painel Administrativo</p>
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar */}
+      <aside className="w-60 bg-navy-950 flex flex-col border-r border-white/[0.04] flex-shrink-0">
+        {/* Logo */}
+        <div className="px-5 py-5 border-b border-white/[0.06]">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-accent-blue/20 flex items-center justify-center">
+              <Server size={20} className="text-accent-blue" />
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-white tracking-tight">OTRS MCP</h1>
+            </div>
+          </div>
         </div>
-        <nav className="flex-1 p-4 space-y-1">
-          {navItems.map(({ path, label, icon: Icon }) => (
-            <Link
-              key={path}
-              to={path}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
-                location.pathname === path
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-300 hover:bg-gray-800'
-              }`}
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </Link>
+
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
+          {navSections.map((section, sIdx) => (
+            <div key={sIdx} className="space-y-1">
+              {section.items.map(({ path, label, icon: Icon }) => (
+                <Link
+                  key={path}
+                  to={path}
+                  className={isActive(path) ? 'nav-link-active' : 'nav-link-inactive'}
+                >
+                  <Icon size={18} />
+                  <span>{label}</span>
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
-        <div className="p-4 border-t border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">{user?.username}</span>
+
+        {/* Footer */}
+        <div className="px-4 py-4 border-t border-white/[0.06] space-y-3">
+          <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="w-6 h-6 rounded-full bg-accent-blue/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-xs font-bold text-accent-blue">
+                {user?.username?.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            <span className="truncate">{user?.username}</span>
           </div>
           <button
             onClick={logout}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors w-full"
+            className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors w-full"
           >
-            <LogOut size={16} />
-            <span>Sair</span>
+            <LogOut size={14} />
+            <span>Logout</span>
           </button>
-          <p className="text-xs text-gray-600 mt-2">v0.2.0</p>
+          <p className="text-[10px] text-gray-600">v0.2.0</p>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">
-        <div className="p-6">
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Bar */}
+        <header className="h-12 bg-navy-950/50 backdrop-blur-sm border-b border-white/[0.04] flex items-center justify-between px-6 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={isOnline ? 'status-dot-online' : 'status-dot-offline'} />
+            <span className="text-xs text-gray-400">
+              MCP available at{' '}
+              <code className="text-gray-300 bg-white/[0.04] px-1.5 py-0.5 rounded text-[11px]">
+                MCP: /mcp
+              </code>
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-gray-500">{user?.username}</span>
+            <button
+              onClick={logout}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Logout
+            </button>
+          </div>
+        </header>
+
+        {/* Page Content */}
+        <main className="flex-1 overflow-auto p-6">
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

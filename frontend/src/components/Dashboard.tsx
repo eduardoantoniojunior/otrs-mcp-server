@@ -1,273 +1,233 @@
 import { Link } from 'react-router-dom';
-import { useTickets, useHealth, useActivitySummary, useActivity } from '../hooks/useTickets';
+import { useHealth, useActivitySummary, useActivity } from '../hooks/useTickets';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../services/api';
 import {
-  Plus,
-  CheckCircle,
-  Clock,
-  Search,
-  Ticket as TicketIcon,
-  Edit3,
-  History,
+  Key,
+  Server,
+  Users,
   Activity,
+  Plus,
+  Zap,
   TrendingUp,
-  XCircle,
 } from 'lucide-react';
 
 const TOOL_LABELS: Record<string, string> = {
-  create_ticket: 'Criar Ticket',
-  get_ticket: 'Consultar Ticket',
-  search_tickets: 'Buscar Tickets',
-  update_ticket: 'Atualizar Ticket',
-  get_ticket_history: 'Historico',
-};
-
-const TOOL_ICONS: Record<string, typeof Search> = {
-  create_ticket: Plus,
-  get_ticket: TicketIcon,
-  search_tickets: Search,
-  update_ticket: Edit3,
-  get_ticket_history: History,
+  create_ticket: 'create_ticket',
+  get_ticket: 'get_ticket',
+  search_tickets: 'search_tickets',
+  update_ticket: 'update_ticket',
+  get_ticket_history: 'get_ticket_history',
 };
 
 export default function Dashboard() {
   const { data: healthData, isLoading: healthLoading } = useHealth();
   const { data: summary, isLoading: summaryLoading } = useActivitySummary();
   const { data: activityData } = useActivity({ limit: 10 });
-  const { data: ticketsData, isLoading: ticketsLoading } = useTickets({ limit: 5 });
 
-  const apiOnline = healthData?.status === 'ok';
-  const tickets = ticketsData?.TicketID ?? [];
+  const { data: apiKeys } = useQuery({
+    queryKey: ['api-keys-count'],
+    queryFn: () => api.listApiKeys(false),
+  });
+
+  const { data: adminUsers } = useQuery({
+    queryKey: ['admin-users-count'],
+    queryFn: () => api.listUsers(),
+  });
+
+  const isOnline = healthData?.status === 'ok';
   const events = activityData?.events ?? [];
+  const tokenCount = apiKeys?.length ?? 0;
+  const userCount = adminUsers?.length ?? 0;
+  const totalCalls = summary?.total_calls ?? 0;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <Link
-          to="/tickets/new"
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={18} />
-          Novo Ticket
+    <div className="space-y-6 animate-fade-in">
+      {/* Page Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <p className="section-subtitle">System overview and recent activity</p>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* MCP Tokens */}
+        <div className="stat-card">
+          <div className="stat-icon bg-amber-500/10">
+            <Key size={22} className="text-amber-400" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-white">{tokenCount}</p>
+            <p className="text-sm text-gray-400 mt-0.5">MCP Tokens</p>
+          </div>
+        </div>
+
+        {/* OTRS Server */}
+        <div className="stat-card">
+          <div className="stat-icon bg-accent-blue/10">
+            <Server size={22} className="text-accent-blue" />
+          </div>
+          <div>
+            {healthLoading ? (
+              <p className="text-lg font-bold text-gray-400">Checking...</p>
+            ) : (
+              <>
+                <p className="text-3xl font-bold text-white">1</p>
+                <p className="text-sm text-gray-400 mt-0.5">OTRS Server</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <div className={isOnline ? 'status-dot-online' : 'status-dot-offline'} />
+                  <span className={`text-xs ${isOnline ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {isOnline ? 'Connected' : 'Offline'}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Admin Users */}
+        <div className="stat-card">
+          <div className="stat-icon bg-accent-cyan/10">
+            <Users size={22} className="text-cyan-400" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-white">{userCount}</p>
+            <p className="text-sm text-gray-400 mt-0.5">Admin Users</p>
+          </div>
+        </div>
+
+        {/* Total Calls */}
+        <div className="stat-card">
+          <div className="stat-icon bg-accent-violet/10">
+            <Activity size={22} className="text-violet-400" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-white">{totalCalls}</p>
+            <p className="text-sm text-gray-400 mt-0.5">Total API Calls</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="flex gap-3">
+        <Link to="/mcp-tokens" className="btn-primary">
+          <Plus size={16} />
+          Create Token
+        </Link>
+        <Link to="/settings" className="btn-secondary">
+          <Zap size={16} />
+          Test OTRS Connection
         </Link>
       </div>
 
-      {/* Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center gap-3">
-            <Activity className="text-purple-600" size={24} />
-            <div>
-              <p className="text-sm text-gray-500">Total de Chamadas</p>
-              {summaryLoading ? (
-                <p className="text-2xl font-bold text-gray-400">...</p>
-              ) : (
-                <p className="text-2xl font-bold">{summary?.total_calls ?? 0}</p>
-              )}
-            </div>
+      {/* Active Tasks Panel */}
+      <div className="glass-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <TrendingUp size={18} className="text-gray-400" />
+            <h2 className="section-title">Active Tasks</h2>
           </div>
+          <span className="text-xs text-gray-500">In-memory store for long-running tools</span>
         </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center gap-3">
-            <TrendingUp className="text-blue-600" size={24} />
-            <div>
-              <p className="text-sm text-gray-500">Ultimas 24h</p>
-              {summaryLoading ? (
-                <p className="text-2xl font-bold text-gray-400">...</p>
-              ) : (
-                <p className="text-2xl font-bold">{summary?.last_24h?.calls ?? 0}</p>
-              )}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div>
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-xs text-gray-400">Live tasks</span>
             </div>
+            <p className="text-2xl font-bold text-white">
+              {summaryLoading ? '...' : summary?.last_24h?.calls ?? 0}
+              <span className="text-sm font-normal text-gray-500 ml-1">/ 100</span>
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {summaryLoading ? '...' : `${Math.min(Math.round(((summary?.last_24h?.calls ?? 0) / 100) * 100), 100)}% capacity`}
+            </p>
           </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="text-green-600" size={24} />
-            <div>
-              <p className="text-sm text-gray-500">Sucesso</p>
-              {summaryLoading ? (
-                <p className="text-2xl font-bold text-gray-400">...</p>
-              ) : (
-                <p className="text-2xl font-bold text-green-600">
-                  {summary?.by_status?.success ?? 0}
-                </p>
-              )}
+          <div>
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-xs text-gray-400">Success rate</span>
             </div>
+            <p className="text-2xl font-bold text-white">
+              {summaryLoading ? '...' : totalCalls > 0
+                ? `${Math.round(((summary?.by_status?.success ?? 0) / totalCalls) * 100)}%`
+                : '—'}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">Overall success</p>
           </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center gap-3">
-            <XCircle className="text-red-600" size={24} />
-            <div>
-              <p className="text-sm text-gray-500">Erros</p>
-              {summaryLoading ? (
-                <p className="text-2xl font-bold text-gray-400">...</p>
-              ) : (
-                <p className="text-2xl font-bold text-red-600">
-                  {summary?.by_status?.error ?? 0}
-                </p>
-              )}
+          <div>
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-xs text-gray-400">Default TTL</span>
             </div>
+            <p className="text-2xl font-bold text-white">60 min</p>
+            <p className="text-xs text-gray-500 mt-0.5">When client omits ttl</p>
+          </div>
+          <div>
+            <div className="flex items-center gap-1 mb-1">
+              <span className="text-xs text-gray-400">TL caching</span>
+            </div>
+            <p className="text-2xl font-bold text-white">24 h</p>
+            <p className="text-xs text-gray-500 mt-0.5">Max client-supplied</p>
           </div>
         </div>
       </div>
 
-      {/* System Status */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center gap-3">
-            <Clock className="text-yellow-600" size={24} />
-            <div>
-              <p className="text-sm text-gray-500">Sistema</p>
-              {healthLoading ? (
-                <p className="text-lg font-bold text-gray-400">Verificando...</p>
-              ) : apiOnline ? (
-                <p className="text-lg font-bold text-green-600">Online</p>
+      {/* Recent Activity */}
+      <div className="glass-card">
+        <div className="flex items-center justify-between p-5 border-b border-white/[0.06]">
+          <h2 className="section-title">Recent Activity</h2>
+          <Link to="/audit-log" className="text-xs text-accent-blue hover:text-blue-400 transition-colors">
+            Latest activity →
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="table-dark">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>Agent</th>
+                <th>Target</th>
+                <th>Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                    No recent activity
+                  </td>
+                </tr>
               ) : (
-                <p className="text-lg font-bold text-red-600">Offline</p>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="text-green-600" size={24} />
-            <div>
-              <p className="text-sm text-gray-500">API</p>
-              {healthLoading ? (
-                <p className="text-lg font-bold text-gray-400">Verificando...</p>
-              ) : apiOnline ? (
-                <p className="text-lg font-bold text-green-600">Ativo</p>
-              ) : (
-                <p className="text-lg font-bold text-red-600">Inativo</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Activity by Tool */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">Atividade por Ferramenta</h2>
-          </div>
-          <div className="p-4">
-            {summaryLoading && <p className="text-gray-500">Carregando...</p>}
-            {!summaryLoading && Object.keys(summary?.by_tool ?? {}).length === 0 && (
-              <p className="text-gray-500">Nenhuma atividade registrada</p>
-            )}
-            {!summaryLoading && Object.entries(summary?.by_tool ?? {}).length > 0 && (
-              <div className="space-y-3">
-                {Object.entries(summary!.by_tool)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([tool, count]) => {
-                    const Icon = TOOL_ICONS[tool] || Activity;
-                    const maxCount = Math.max(...Object.values(summary!.by_tool));
-                    const pct = maxCount > 0 ? (count / maxCount) * 100 : 0;
-                    return (
-                      <div key={tool}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex items-center gap-2">
-                            <Icon size={16} className="text-gray-400" />
-                            <span className="text-sm font-medium">
-                              {TOOL_LABELS[tool] || tool}
-                            </span>
-                          </div>
-                          <span className="text-sm font-bold">{count}</span>
-                        </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2">
-                          <div
-                            className="bg-blue-500 h-2 rounded-full transition-all"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">Atividade Recente</h2>
-          </div>
-          <div className="p-4">
-            {events.length === 0 && (
-              <p className="text-gray-500">Nenhuma atividade recente</p>
-            )}
-            {events.length > 0 && (
-              <div className="space-y-2">
-                {events.slice(0, 8).map((event, i) => {
-                  const Icon = TOOL_ICONS[event.tool] || Activity;
-                  return (
-                    <div
-                      key={`${event.timestamp}-${i}`}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50"
-                    >
-                      <div
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          event.status === 'success' ? 'bg-green-500' : 'bg-red-500'
-                        }`}
-                      />
-                      <Icon size={16} className="text-gray-400 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {TOOL_LABELS[event.tool] || event.tool}
-                          {event.ticket_id && (
-                            <span className="text-gray-400 ml-1">#{event.ticket_id}</span>
-                          )}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {event.duration_ms.toFixed(0)}ms
-                          {event.error && (
-                            <span className="text-red-500 ml-2">
-                              {event.error.substring(0, 40)}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      <span className="text-xs text-gray-400 whitespace-nowrap">
-                        {new Date(event.timestamp_iso).toLocaleTimeString('pt-BR')}
+                events.slice(0, 8).map((event, i) => (
+                  <tr key={`${event.timestamp}-${i}`} className="animate-fade-in">
+                    <td className="whitespace-nowrap text-xs text-gray-400 font-mono">
+                      {new Date(event.timestamp_iso).toLocaleString('pt-BR', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })}
+                    </td>
+                    <td>
+                      <span className={event.status === 'success' ? 'badge-green' : 'badge-rose'}>
+                        {TOOL_LABELS[event.tool] || event.tool}
                       </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Tickets */}
-      <div className="bg-white rounded-lg shadow mt-6">
-        <div className="p-4 border-b">
-          <h2 className="text-lg font-semibold">Tickets Recentes</h2>
-        </div>
-        <div className="p-4">
-          {ticketsLoading && <p className="text-gray-500">Carregando...</p>}
-          {tickets.length === 0 && !ticketsLoading && (
-            <p className="text-gray-500">Nenhum ticket encontrado</p>
-          )}
-          {tickets.length > 0 && (
-            <div className="space-y-2">
-              {tickets.slice(0, 5).map((ticketId) => (
-                <Link
-                  key={ticketId}
-                  to={`/tickets/${ticketId}`}
-                  className="block p-3 rounded-lg hover:bg-gray-50 border"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-sm text-gray-500">#{ticketId}</span>
-                    <span className="text-xs px-2 py-1 rounded bg-gray-100">Ver detalhes</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
+                    </td>
+                    <td className="text-sm text-accent-blue">
+                      {(event as unknown as { agent_name?: string }).agent_name || '—'}
+                    </td>
+                    <td className="text-sm">
+                      {event.ticket_id ? `#${event.ticket_id}` : '—'}
+                    </td>
+                    <td className="text-xs text-gray-400 font-mono">
+                      {event.duration_ms?.toFixed(0)}ms
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

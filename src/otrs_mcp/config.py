@@ -37,7 +37,13 @@ class OTRSConfig(BaseSettings):
                 f"Variaveis de ambiente obrigatorias nao configuradas: {', '.join(missing)}"
             )
         if not self.web_base_url:
-            self.web_base_url = self.base_url.rsplit("/nph-genericinterface.pl", 1)[0]
+            # Extrai a base web a partir da URL da API.
+            # Ex: "https://host/otrs/nph-genericinterface.pl/Webservice/X"
+            #   → "https://host/otrs"
+            base = self.base_url.split("/nph-genericinterface.pl", 1)[0]
+            self.web_base_url = base.rstrip("/")
+        else:
+            self.web_base_url = self.web_base_url.rstrip("/")
 
     def get_ticket_web_url(self, ticket_id: str) -> str:
         return (

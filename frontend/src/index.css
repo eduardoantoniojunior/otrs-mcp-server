@@ -2,6 +2,143 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900;
+@layer base {
+  body {
+    @apply bg-navy-900 text-gray-100 font-sans antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-navy-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-navy-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-navy-800/80 backdrop-blur-sm border border-white/[0.06] rounded-xl;
+  }
+
+  .glass-card-hover {
+    @apply glass-card transition-all duration-200 hover:border-white/[0.12] hover:shadow-card-hover;
+  }
+
+  .stat-card {
+    @apply glass-card p-5 flex items-start gap-4 animate-fade-in;
+  }
+
+  .stat-icon {
+    @apply w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150;
+  }
+
+  .nav-link-active {
+    @apply nav-link bg-accent-blue/15 text-accent-blue;
+  }
+
+  .nav-link-inactive {
+    @apply nav-link text-gray-400 hover:text-gray-200 hover:bg-white/[0.04];
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 bg-accent-blue text-white text-sm font-medium rounded-lg
+           hover:bg-blue-600 active:bg-blue-700 transition-all duration-150 shadow-glow hover:shadow-glow-lg
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 bg-white/[0.06] text-gray-300 text-sm font-medium rounded-lg
+           border border-white/[0.08] hover:bg-white/[0.1] hover:text-white transition-all duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 bg-accent-rose/10 text-accent-rose text-sm font-medium rounded-lg
+           border border-accent-rose/20 hover:bg-accent-rose/20 transition-all duration-150;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  .badge-blue {
+    @apply badge bg-accent-blue/15 text-blue-400;
+  }
+
+  .badge-green {
+    @apply badge bg-accent-emerald/15 text-emerald-400;
+  }
+
+  .badge-amber {
+    @apply badge bg-accent-amber/15 text-amber-400;
+  }
+
+  .badge-rose {
+    @apply badge bg-accent-rose/15 text-rose-400;
+  }
+
+  .badge-violet {
+    @apply badge bg-accent-violet/15 text-violet-400;
+  }
+
+  .badge-gray {
+    @apply badge bg-white/[0.06] text-gray-400;
+  }
+
+  .input-dark {
+    @apply w-full px-3.5 py-2.5 bg-navy-900/60 border border-white/[0.08] rounded-lg text-gray-100
+           placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-accent-blue/40 focus:border-accent-blue/40
+           transition-all duration-150;
+  }
+
+  .table-dark {
+    @apply w-full text-sm;
+  }
+
+  .table-dark thead {
+    @apply border-b border-white/[0.06];
+  }
+
+  .table-dark th {
+    @apply text-left px-4 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider;
+  }
+
+  .table-dark tbody tr {
+    @apply border-b border-white/[0.04] transition-colors hover:bg-white/[0.02];
+  }
+
+  .table-dark td {
+    @apply px-4 py-3.5 text-gray-300;
+  }
+
+  .section-title {
+    @apply text-lg font-semibold text-gray-100;
+  }
+
+  .section-subtitle {
+    @apply text-sm text-gray-400 mt-0.5;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full flex-shrink-0;
+  }
+
+  .status-dot-online {
+    @apply status-dot bg-accent-emerald animate-pulse-dot;
+  }
+
+  .status-dot-offline {
+    @apply status-dot bg-accent-rose;
+  }
 }

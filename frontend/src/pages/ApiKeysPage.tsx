@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Shield, Copy, Check } from 'lucide-react';
+import { Plus, Trash2, Copy, Check, Ban, Key } from 'lucide-react';
 import { api } from '../services/api';
 
 interface ApiKey {
@@ -70,82 +70,85 @@ export default function ApiKeysPage() {
     }
   };
 
+  const resetForm = () => {
+    setForm({ name: '', agent_name: '', permissions: ['read'], expires_in_days: '' });
+    setShowCreate(false);
+    setNewKey(null);
+  };
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">API Keys</h1>
-          <p className="text-gray-500">Gerencie as chaves de acesso para agentes</p>
+          <h1 className="text-2xl font-bold text-white">MCP Tokens</h1>
+          <p className="section-subtitle">Manage access tokens for MCP agents</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={18} />
-          Nova Key
+        <button onClick={() => setShowCreate(true)} className="btn-primary" id="create-token-btn">
+          <Plus size={16} />
+          Create Token
         </button>
       </div>
 
+      {/* New Key Created Banner */}
       {newKey && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+        <div className="glass-card p-5 border-accent-emerald/30 animate-slide-up">
           <div className="flex items-center gap-2 mb-2">
-            <Check className="text-green-600" size={18} />
-            <span className="font-medium text-green-800">API Key criada com sucesso!</span>
+            <Check size={18} className="text-emerald-400" />
+            <span className="font-medium text-emerald-400">Token created successfully!</span>
           </div>
-          <p className="text-sm text-green-700 mb-3">
-            Guarde esta chave. Ela nao sera mostrada novamente.
+          <p className="text-sm text-gray-400 mb-3">
+            Save this token now. It won't be shown again.
           </p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 bg-white px-3 py-2 rounded border text-sm font-mono break-all">
+            <code className="flex-1 bg-navy-900/80 px-4 py-2.5 rounded-lg text-sm font-mono text-gray-200 break-all border border-white/[0.06]">
               {newKey}
             </code>
-            <button onClick={copyKey} className="p-2 hover:bg-green-100 rounded transition-colors">
-              {copied ? <Check className="text-green-600" size={18} /> : <Copy size={18} />}
+            <button onClick={copyKey} className="btn-secondary px-3 py-2.5" title="Copy">
+              {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
             </button>
           </div>
-          <button
-            onClick={() => setNewKey(null)}
-            className="mt-3 text-sm text-green-700 hover:text-green-900"
-          >
-            Fechar
+          <button onClick={resetForm} className="text-sm text-gray-500 hover:text-gray-300 mt-3 transition-colors">
+            Close
           </button>
         </div>
       )}
 
+      {/* Create Form */}
       {showCreate && !newKey && (
-        <div className="bg-white border rounded-lg p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Nova API Key</h2>
+        <div className="glass-card p-6 animate-slide-up">
+          <h2 className="section-title mb-5">New MCP Token</h2>
           <form onSubmit={handleCreate} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Name</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  placeholder="Ex: Claude Desktop - Joao"
+                  className="input-dark"
+                  placeholder="e.g. Claude Desktop - Joao"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Agente</label>
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Agent Name</label>
                 <input
                   type="text"
                   value={form.agent_name}
                   onChange={(e) => setForm({ ...form, agent_name: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  placeholder="Ex: claude-desktop-joao"
+                  className="input-dark"
+                  placeholder="e.g. claude-desktop-joao"
                   required
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Permissoes</label>
-                <div className="flex gap-4">
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">Permissions</label>
+                <div className="flex gap-4 mt-1">
                   {['read', 'write'].map((perm) => (
-                    <label key={perm} className="flex items-center gap-2">
+                    <label key={perm} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={form.permissions.includes(perm)}
@@ -155,132 +158,114 @@ export default function ApiKeysPage() {
                             : form.permissions.filter((p) => p !== perm);
                           setForm({ ...form, permissions: perms });
                         }}
-                        className="rounded"
+                        className="rounded border-white/20 bg-navy-900 text-accent-blue focus:ring-accent-blue/40"
                       />
-                      <span className="text-sm">{perm}</span>
+                      <span className="text-sm text-gray-300">{perm}</span>
                     </label>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Expirar em (dias, opcional)
+                <label className="block text-sm font-medium text-gray-300 mb-1.5">
+                  Expires in (days, optional)
                 </label>
                 <input
                   type="number"
                   value={form.expires_in_days}
                   onChange={(e) => setForm({ ...form, expires_in_days: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  placeholder="Nunca"
+                  className="input-dark"
+                  placeholder="Never"
                   min="1"
                   max="365"
                 />
               </div>
             </div>
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={createMutation.isPending}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                {createMutation.isPending ? 'Criando...' : 'Criar Key'}
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={createMutation.isPending} className="btn-primary">
+                {createMutation.isPending ? 'Creating...' : 'Create Token'}
               </button>
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300"
-              >
-                Cancelar
+              <button type="button" onClick={resetForm} className="btn-secondary">
+                Cancel
               </button>
             </div>
           </form>
         </div>
       )}
 
-      <div className="bg-white rounded-lg border">
-        <table className="w-full">
+      {/* Tokens Table */}
+      <div className="glass-card overflow-hidden">
+        <table className="table-dark">
           <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nome</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Agente</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Prefixo</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Permissoes</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Usos</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Status</th>
-              <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acoes</th>
+            <tr>
+              <th>Name</th>
+              <th>Agent</th>
+              <th>Prefix</th>
+              <th>Permissions</th>
+              <th>Usage</th>
+              <th>Status</th>
+              <th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                  Carregando...
-                </td>
+                <td colSpan={7} className="text-center py-8 text-gray-500">Loading...</td>
               </tr>
             ) : keys?.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                  Nenhuma API key encontrada
+                <td colSpan={7} className="text-center py-8 text-gray-500">
+                  No MCP tokens found. Create one to get started.
                 </td>
               </tr>
             ) : (
               keys?.map((key) => (
-                <tr key={key.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="px-4 py-3">
+                <tr key={key.id}>
+                  <td>
                     <div className="flex items-center gap-2">
-                      <Shield size={16} className="text-gray-400" />
-                      <span className="font-medium">{key.name}</span>
+                      <Key size={14} className="text-amber-400 flex-shrink-0" />
+                      <span className="font-medium text-gray-200">{key.name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{key.agent_name}</td>
-                  <td className="px-4 py-3">
-                    <code className="text-sm bg-gray-100 px-2 py-1 rounded">{key.key_prefix}...</code>
+                  <td className="text-sm">{key.agent_name}</td>
+                  <td>
+                    <code className="text-xs bg-white/[0.04] px-2 py-1 rounded font-mono">{key.key_prefix}...</code>
                   </td>
-                  <td className="px-4 py-3">
+                  <td>
                     <div className="flex gap-1">
                       {key.permissions.map((p) => (
-                        <span
-                          key={p}
-                          className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded"
-                        >
+                        <span key={p} className={p === 'write' ? 'badge-amber' : 'badge-blue'}>
                           {p}
                         </span>
                       ))}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{key.usage_count}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        key.active
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {key.active ? 'Ativa' : 'Revogada'}
+                  <td className="text-sm font-mono">{key.usage_count}</td>
+                  <td>
+                    <span className={key.active ? 'badge-green' : 'badge-rose'}>
+                      {key.active ? 'Active' : 'Revoked'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="text-right">
                     <div className="flex gap-2 justify-end">
                       {key.active && (
                         <button
                           onClick={() => revokeMutation.mutate(key.id)}
-                          className="text-yellow-600 hover:text-yellow-700 text-sm"
-                          title="Revogar"
+                          className="text-amber-400/70 hover:text-amber-400 transition-colors p-1"
+                          title="Revoke"
                         >
-                          Revogar
+                          <Ban size={15} />
                         </button>
                       )}
                       <button
                         onClick={() => {
-                          if (confirm('Remover permanentemente esta key?')) {
+                          if (confirm('Permanently delete this token?')) {
                             deleteMutation.mutate(key.id);
                           }
                         }}
-                        className="text-red-600 hover:text-red-700"
-                        title="Remover"
+                        className="text-rose-400/70 hover:text-rose-400 transition-colors p-1"
+                        title="Delete"
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </div>
                   </td>
