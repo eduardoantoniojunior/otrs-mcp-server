@@ -76,23 +76,8 @@ export default function Layout() {
         </nav>
 
         {/* Footer */}
-        <div className="px-4 py-4 border-t border-white/[0.06] space-y-3">
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <div className="w-6 h-6 rounded-full bg-accent-blue/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-accent-blue">
-                {user?.username?.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <span className="truncate">{user?.username}</span>
-          </div>
-          <button
-            onClick={logout}
-            className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-300 transition-colors w-full"
-          >
-            <LogOut size={14} />
-            <span>Logout</span>
-          </button>
-          <p className="text-[10px] text-gray-600">v0.2.0</p>
+        <div className="px-4 py-3 border-t border-white/[0.06] text-center">
+          <p className="text-[11px] text-gray-600 font-mono">v0.2.0</p>
         </div>
       </aside>
 
@@ -109,13 +94,22 @@ export default function Layout() {
               </code>
             </span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-500">{user?.username}</span>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+              <div className="w-5 h-5 rounded-full bg-accent-blue/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-[10px] font-bold text-accent-blue">
+                  {user?.username?.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <span className="text-xs text-gray-300 font-medium">{user?.username}</span>
+            </div>
             <button
               onClick={logout}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-rose-400 transition-colors px-2 py-1 rounded-lg hover:bg-white/[0.04]"
+              title="Logout"
             >
-              Logout
+              <LogOut size={13} />
+              <span>Logout</span>
             </button>
           </div>
         </header>
