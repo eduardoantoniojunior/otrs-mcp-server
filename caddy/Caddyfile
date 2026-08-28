@@ -1,17 +1,12 @@
-# =============================================================================
-# OTRS MCP Server — Caddy Reverse Proxy
-# =============================================================================
-# Dois modos de operação:
-#
-# 1. SEM HTTPS (padrão): Acessa via http://<ip>:8081
-#    .env: não definir DOMAIN ou deixar vazio
-#
-# 2. COM HTTPS: Acessa via https://mcp-zabbix.beonup.com.br
-#    .env: DOMAIN=mcp-zabbix.beonup.com.br EMAIL=admin@beonup.com.br
-#    Requer Caddy com plugin caddy-dns/route53 (ver caddy/Dockerfile)
-# =============================================================================
+{
+    https_port 8443
+    http_port 8081
+}
 
-:8081 {
+mcp-zabbix.beonup.com.br:8443 {
+    # Certificado auto-assinado interno (sem depender de Let's Encrypt ou Route53)
+    tls internal
+
     # MCP Server (Streamable HTTP) — requer Authorization header
     handle /mcp {
         @no_auth {
@@ -30,4 +25,9 @@
     handle {
         reverse_proxy frontend:80
     }
+}
+
+# HTTP na 8081 — redireciona para HTTPS
+mcp-zabbix.beonup.com.br:8081 {
+    redir https://mcp-zabbix.beonup.com.br:8443{uri} permanent
 }
