@@ -82,10 +82,10 @@ def run_server() -> None:
 
     if TRANSPORT == "http":
         logger.info(
-            "Starting OTRS MCP Server (SSE on %s:%d)...", MCP_HOST, MCP_PORT
+            "Starting OTRS MCP Server (Streamable HTTP on %s:%d)...", MCP_HOST, MCP_PORT
         )
         _install_auth_middleware()
-        mcp.run(transport="sse")
+        mcp.run(transport="streamable-http")
     else:
         logger.info("Starting OTRS MCP Server (stdio)...")
         logger.info(

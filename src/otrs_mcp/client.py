@@ -48,7 +48,7 @@ class OTRSClient:
         """
         url = f"{self._config.base_url}/SessionCreate"
         payload = {
-            "CustomerUserLogin": self._config.username,
+            "UserLogin": self._config.username,
             "Password": self._config.password,
         }
 
@@ -111,7 +111,7 @@ class OTRSClient:
         session_id = await self._ensure_session()
 
         request_data: dict[str, Any] = {
-            "CustomerUserLogin": self._config.username,
+            "UserLogin": self._config.username,
             "Password": self._config.password,
             "SessionID": session_id,
         }
@@ -309,7 +309,7 @@ class OTRSClient:
         if priority:
             search_data["Priorities"] = [priority]
         if title:
-            search_data["Title"] = title
+            search_data["Title"] = title.replace("*", "%")
 
         result = await self.request("TicketSearch", search_data)
 

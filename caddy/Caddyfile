@@ -4,14 +4,7 @@
         reverse_proxy mcp-server:8001
     }
     
-    # MCP Server (FastMCP SSE)
-    handle /sse {
-        reverse_proxy mcp-server:8001
-    }
-    
-    handle /messages {
-        reverse_proxy mcp-server:8001
-    }
+    # (SSE e /messages removidos — servidor migrado para Streamable HTTP em /mcp)
 
     # API REST
     handle /api/* {
