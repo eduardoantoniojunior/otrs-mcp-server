@@ -8,7 +8,7 @@ services:
     cap_add:
       - NET_ADMIN
     ports:
-      - "8080:8080"
+      - "8081:8081"
       - "8443:8443"
       - "8443:8443/udp"
     volumes:

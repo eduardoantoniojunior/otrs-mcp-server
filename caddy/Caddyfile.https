@@ -1,17 +1,28 @@
 # =============================================================================
-# OTRS MCP Server — Caddy Reverse Proxy
+# OTRS MCP Server — Caddy com HTTPS (Let's Encrypt via DNS Challenge Route53)
 # =============================================================================
-# Dois modos de operação:
+# Para usar este arquivo, renomeie para Caddyfile:
+#   cp Caddyfile.https Caddyfile
 #
-# 1. SEM HTTPS (padrão): Acessa via http://<ip>:8081
-#    .env: não definir DOMAIN ou deixar vazio
-#
-# 2. COM HTTPS: Acessa via https://mcp-zabbix.beonup.com.br
-#    .env: DOMAIN=mcp-zabbix.beonup.com.br EMAIL=admin@beonup.com.br
-#    Requer Caddy com plugin caddy-dns/route53 (ver caddy/Dockerfile)
+# Requer:
+#   - Caddy com plugin caddy-dns/route53 (ver Dockerfile)
+#   - .env com DOMAIN, EMAIL e AWS_REGION definidos
+#   - IAM Role da EC2 com permissão route53:ChangeResourceRecordSets
+#   - Registro A no Route53: DOMAIN -> IP da EC2
+#   - Porta 8443 aberta no Security Group
 # =============================================================================
 
-:8081 {
+{
+    https_port 8443
+}
+
+{$DOMAIN} {
+    tls {$EMAIL} {
+        dns route53 {
+            region {$AWS_REGION:us-east-1}
+        }
+    }
+
     # MCP Server (Streamable HTTP) — requer Authorization header
     handle /mcp {
         @no_auth {
