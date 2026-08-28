@@ -117,9 +117,31 @@ export default function ClientWizardPage() {
   const [apiKey, setApiKey] = useState('sk-otrs-your-api-key');
 
   const copyConfig = (clientId: string, config: string) => {
-    navigator.clipboard.writeText(config);
-    setCopied(clientId);
-    setTimeout(() => setCopied(null), 2000);
+    const tryClipboard = async () => {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(config);
+        return;
+      }
+      const textarea = document.createElement('textarea');
+      textarea.value = config;
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-9999px';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    };
+
+    tryClipboard()
+      .then(() => {
+        setCopied(clientId);
+        setTimeout(() => setCopied(null), 2000);
+      })
+      .catch(() => {
+        window.prompt('Copy the config manually (Ctrl+C):', config);
+      });
   };
 
   return (

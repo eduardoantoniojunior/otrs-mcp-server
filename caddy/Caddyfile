@@ -1,16 +1,28 @@
-:80 {
+{
+    # Portas alternativas (80 e 443 já ocupadas por outro serviço na mesma EC2)
+    http_port 8080
+    https_port 8443
+}
+
+{$DOMAIN:localhost}:8443 {
+    # HTTPS via Let's Encrypt com DNS Challenge (Route53)
+    # Não depende das portas 80/443 — valida via DNS TXT record
+    # Credenciais AWS: usa IAM Role da EC2 ou env vars AWS_ACCESS_KEY_ID/SECRET
+    tls {$EMAIL:internal} {
+        dns route53 {
+            region {$AWS_REGION:us-east-1}
+        }
+    }
+
     # MCP Server (Streamable HTTP)
-    # Requer header Authorization com API key válida
-    # A validação real é feita pelo backend, mas podemos bloquear requests sem header
-    handle /mcp* {
+    # Rota exata /mcp — requer Authorization header
+    handle /mcp {
         @no_auth {
             not header Authorization *
         }
         respond @no_auth "Authorization header required" 401
         reverse_proxy mcp-server:8001
     }
-    
-    # (SSE e /messages removidos — servidor migrado para Streamable HTTP em /mcp)
 
     # API REST
     handle /api/* {

@@ -168,11 +168,37 @@ export default function ApiKeysPage() {
   };
 
   const copyKey = () => {
-    if (newKey) {
-      navigator.clipboard.writeText(newKey);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    if (!newKey) return;
+
+    const tryClipboard = async () => {
+      // Preferred: async Clipboard API (requires HTTPS or localhost)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(newKey);
+        return;
+      }
+
+      // Fallback: execCommand (works on HTTP)
+      const textarea = document.createElement('textarea');
+      textarea.value = newKey;
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-9999px';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    };
+
+    tryClipboard()
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        // Last resort: show the key in a prompt so the user can copy manually
+        window.prompt('Copy the token manually (Ctrl+C):', newKey);
+      });
   };
 
   const resetForm = () => {
