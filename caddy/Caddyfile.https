@@ -1,11 +1,8 @@
 # =============================================================================
 # OTRS MCP Server — Caddy com HTTPS (Let's Encrypt via DNS Challenge Route53)
 # =============================================================================
-# Para usar este arquivo, renomeie para Caddyfile:
-#   cp Caddyfile.https Caddyfile
-#
 # Requer:
-#   - Caddy com plugin caddy-dns/route53 (ver Dockerfile)
+#   - Caddy com plugin caddy-dns/route53 (ver caddy/Dockerfile)
 #   - .env com DOMAIN, EMAIL e AWS_REGION definidos
 #   - IAM Role da EC2 com permissão route53:ChangeResourceRecordSets
 #   - Registro A no Route53: DOMAIN -> IP da EC2
@@ -14,9 +11,10 @@
 
 {
     https_port 8443
+    http_port 8081
 }
 
-{$DOMAIN} {
+{$DOMAIN}:8443 {
     tls {$EMAIL} {
         dns route53 {
             region {$AWS_REGION:us-east-1}
@@ -41,4 +39,9 @@
     handle {
         reverse_proxy frontend:80
     }
+}
+
+# HTTP fallback na 8081 — redireciona para HTTPS
+{$DOMAIN}:8081 {
+    redir https://{$DOMAIN}:8443{uri} permanent
 }
