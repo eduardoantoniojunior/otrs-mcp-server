@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Trash2, UserPlus, Shield } from 'lucide-react';
+import { Trash2, UserPlus, Shield, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,12 +11,27 @@ interface AdminUser {
   created_at: string;
 }
 
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+  return `${Math.floor(diffDays / 365)} years ago`;
+}
+
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
 
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ['admin-users'],
@@ -36,7 +51,10 @@ export default function AdminUsersPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteUser(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-users'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      setConfirmDelete(null);
+    },
   });
 
   const handleCreate = (e: React.FormEvent) => {
@@ -157,16 +175,14 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="text-sm text-gray-400">
-                    {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                    <span title={new Date(u.created_at).toLocaleDateString('pt-BR')}>
+                      {formatRelativeTime(u.created_at)}
+                    </span>
                   </td>
                   <td className="text-right">
                     {currentUser?.username !== u.username ? (
                       <button
-                        onClick={() => {
-                          if (confirm(`Delete user "${u.username}"?`)) {
-                            deleteMutation.mutate(u.id);
-                          }
-                        }}
+                        onClick={() => setConfirmDelete(u)}
                         className="text-rose-400/70 hover:text-rose-400 transition-colors p-1"
                         title="Delete user"
                       >
@@ -184,6 +200,56 @@ export default function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+          <div className="glass-card p-6 max-w-md w-full mx-4 animate-slide-up">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-rose-500/10 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-rose-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Delete Admin User</h3>
+            </div>
+            <div className="space-y-3 mb-5">
+              <p className="text-gray-400 text-sm">
+                This will permanently delete this administrator account. This action cannot be undone.
+              </p>
+              <div className="bg-navy-900/50 rounded-lg p-3 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Username:</span>
+                  <span className="text-gray-200 font-medium">{confirmDelete.username}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Created:</span>
+                  <span className="text-gray-200">
+                    {new Date(confirmDelete.created_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Account age:</span>
+                  <span className="text-gray-200">{formatRelativeTime(confirmDelete.created_at)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => deleteMutation.mutate(confirmDelete.id)}
+                disabled={deleteMutation.isPending}
+                className="btn-danger flex-1"
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete User'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

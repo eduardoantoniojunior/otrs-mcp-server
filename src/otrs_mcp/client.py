@@ -105,14 +105,14 @@ class OTRSClient:
     ) -> dict[str, Any]:
         """Envia requisicao autenticada para a API do OTRS com retry.
 
-        Usa CustomerUserLogin + Password + SessionID, igual ao script de teste.
+        Usa apenas SessionID para autenticação após o login inicial.
+        Credenciais só são enviadas novamente se a sessão expirar.
         """
         url = f"{self._config.base_url}/{operation}"
         session_id = await self._ensure_session()
 
+        # Usa apenas SessionID para requests normais (mais seguro)
         request_data: dict[str, Any] = {
-            "UserLogin": self._config.username,
-            "Password": self._config.password,
             "SessionID": session_id,
         }
         if data:

@@ -2,13 +2,16 @@
 
 import logging
 import os
+import re
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from otrs_mcp.activity import clear_activity, get_activity, get_summary
 from otrs_mcp.auth import get_api_key_identity, require_permission
@@ -26,6 +29,11 @@ from otrs_mcp.exceptions import (
 from otrs_mcp.routes.admin import router as admin_router
 
 logger = logging.getLogger(__name__)
+
+_client: OTRSClient | None = None
+
+# Regex para validar ticket_id (apenas números, 1-20 dígitos)
+TICKET_ID_PATTERN = re.compile(r"^\d{1,20}$")
 
 _client: OTRSClient | None = None
 
@@ -68,6 +76,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# ---------------------------------------------------------------------------
+# Security Headers Middleware
+# ---------------------------------------------------------------------------
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Adiciona headers de segurança em todas as respostas."""
+
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 cors_origins = os.getenv(
     "OTRS_CORS_ORIGINS", "http://localhost:5173,http://localhost:8080"
 ).split(",")
@@ -87,6 +116,16 @@ def _get_client() -> OTRSClient:
     if _client is None:
         raise HTTPException(status_code=503, detail="API nao inicializada")
     return _client
+
+
+def _validate_ticket_id(ticket_id: str) -> str:
+    """Valida que ticket_id é um número válido."""
+    if not TICKET_ID_PATTERN.match(ticket_id):
+        raise HTTPException(
+            status_code=422,
+            detail=f"ticket_id invalido: '{ticket_id}'. Deve conter apenas digitos (1-20).",
+        )
+    return ticket_id
 
 
 class TicketCreate(BaseModel):
@@ -119,7 +158,10 @@ async def health_check() -> dict[str, str]:
 
 
 @app.get("/api/config")
-async def get_config() -> dict[str, Any]:
+async def get_config(
+    identity: dict[str, Any] = Depends(get_api_key_identity),
+) -> dict[str, Any]:
+    """Retorna configuração do sistema. Requer autenticação."""
     config = OTRSConfig()
     return {
         "valid_queues": [q.strip() for q in config.valid_queues.split(",") if q.strip()],
@@ -177,6 +219,7 @@ async def get_ticket(
     ticket_id: str,
     identity: dict[str, Any] = Depends(require_permission("read")),
 ) -> dict:
+    _validate_ticket_id(ticket_id)
     client = _get_client()
     try:
         return await client.get_ticket(ticket_id=ticket_id)
@@ -254,6 +297,7 @@ async def update_ticket(
     ticket: TicketUpdate,
     identity: dict[str, Any] = Depends(require_permission("write")),
 ) -> dict:
+    _validate_ticket_id(ticket_id)
     client = _get_client()
     start = time.monotonic()
     if ticket.priority and ticket.priority.lower() not in {
@@ -308,6 +352,7 @@ async def get_ticket_history(
     ticket_id: str,
     identity: dict[str, Any] = Depends(require_permission("read")),
 ) -> dict:
+    _validate_ticket_id(ticket_id)
     client = _get_client()
     try:
         return await client.get_ticket_history(ticket_id=ticket_id)

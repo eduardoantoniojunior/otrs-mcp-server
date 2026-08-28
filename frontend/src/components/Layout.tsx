@@ -8,6 +8,7 @@ import {
   Terminal,
   LogOut,
   Server,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useHealth } from '../hooks/useTickets';
@@ -24,6 +25,7 @@ const navSections = [
     items: [
       { path: '/client-wizard', label: 'Client MCP Wizard', icon: Terminal },
       { path: '/audit-log', label: 'Audit Log', icon: ScrollText },
+      { path: '/login-audit', label: 'Login Audit', icon: ShieldAlert },
       { path: '/settings', label: 'Settings', icon: Settings },
     ],
   },

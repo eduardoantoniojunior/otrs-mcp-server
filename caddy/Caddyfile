@@ -1,6 +1,12 @@
 :80 {
     # MCP Server (Streamable HTTP)
-    handle /mcp {
+    # Requer header Authorization com API key válida
+    # A validação real é feita pelo backend, mas podemos bloquear requests sem header
+    handle /mcp* {
+        @no_auth {
+            not header Authorization *
+        }
+        respond @no_auth "Authorization header required" 401
         reverse_proxy mcp-server:8001
     }
     

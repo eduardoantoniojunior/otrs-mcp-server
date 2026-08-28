@@ -69,22 +69,25 @@ class TestOTRSClientRequest:
 
     @pytest.mark.asyncio
     async def test_request_includes_auth(self, client: OTRSClient) -> None:
-        """Requisicao deve incluir CustomerUserLogin, Password e SessionID."""
+        """Requisicao deve incluir SessionID (credenciais apenas na criacao de sessao)."""
         mock_http = _setup_client_mock(client, _session_response(), _mock_response({}))
 
         await client.request("TicketGet")
 
+        # Sessao: deve enviar credenciais
         session_call = mock_http.post.call_args_list[0]
         session_json = session_call.kwargs.get("json") or session_call[1].get("json")
-        assert session_json["CustomerUserLogin"] == "user"
+        assert session_json["UserLogin"] == "user"
         assert session_json["Password"] == "pass"
         assert "SessionID" not in session_json
 
+        # Request: usa apenas SessionID (mais seguro)
         request_call = mock_http.post.call_args_list[1]
         request_json = request_call.kwargs.get("json") or request_call[1].get("json")
-        assert request_json["CustomerUserLogin"] == "user"
-        assert request_json["Password"] == "pass"
         assert request_json["SessionID"] == "test-session-id-123"
+        # Credenciais NAO devem ser enviadas em requests normais
+        assert "UserLogin" not in request_json
+        assert "Password" not in request_json
 
     @pytest.mark.asyncio
     async def test_request_reuses_session(self, client: OTRSClient) -> None:

@@ -6,6 +6,7 @@ import Dashboard from './components/Dashboard';
 import ApiKeysPage from './pages/ApiKeysPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AuditLogPage from './pages/AuditLogPage';
+import LoginAuditPage from './pages/LoginAuditPage';
 import SettingsPage from './pages/SettingsPage';
 import ClientWizardPage from './pages/ClientWizardPage';
 
@@ -83,6 +84,7 @@ export default function App() {
             <Route path="admin-users" element={<AdminUsersPage />} />
             <Route path="client-wizard" element={<ClientWizardPage />} />
             <Route path="audit-log" element={<AuditLogPage />} />
+            <Route path="login-audit" element={<LoginAuditPage />} />
             <Route path="settings" element={<SettingsPage />} />
             {/* Legacy redirects */}
             <Route path="api-keys" element={<Navigate to="/mcp-tokens" replace />} />

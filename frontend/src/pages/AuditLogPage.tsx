@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ScrollText, Filter, RefreshCw } from 'lucide-react';
+import { ScrollText, Filter, RefreshCw, Download } from 'lucide-react';
 import { api } from '../services/api';
 
 const TOOL_OPTIONS = [
@@ -17,6 +17,19 @@ const STATUS_OPTIONS = [
   { value: 'success', label: 'Success' },
   { value: 'error', label: 'Error' },
 ];
+
+interface ActivityEvent {
+  id: number;
+  api_key_id: number | null;
+  agent_name: string | null;
+  tool: string;
+  status: string;
+  duration_ms: number;
+  params: Record<string, unknown> | null;
+  error: string | null;
+  ticket_id: string | null;
+  created_at: string;
+}
 
 export default function AuditLogPage() {
   const [filters, setFilters] = useState({
@@ -40,6 +53,44 @@ export default function AuditLogPage() {
   const events = data?.events ?? [];
   const summary = data?.summary;
 
+  const exportData = (format: 'csv' | 'json') => {
+    if (!events.length) return;
+
+    let content: string;
+    let filename: string;
+    let mimeType: string;
+
+    if (format === 'json') {
+      content = JSON.stringify(events, null, 2);
+      filename = `audit-log-${new Date().toISOString().split('T')[0]}.json`;
+      mimeType = 'application/json';
+    } else {
+      const headers = ['ID', 'Timestamp', 'Tool', 'Status', 'Agent', 'Ticket ID', 'Duration (ms)', 'Error', 'Params'];
+      const rows = events.map((e: ActivityEvent) => [
+        e.id,
+        e.created_at,
+        e.tool,
+        e.status,
+        e.agent_name || '',
+        e.ticket_id || '',
+        e.duration_ms,
+        e.error || '',
+        e.params ? JSON.stringify(e.params) : '',
+      ]);
+      content = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+      filename = `audit-log-${new Date().toISOString().split('T')[0]}.csv`;
+      mimeType = 'text/csv';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -55,14 +106,36 @@ export default function AuditLogPage() {
             )}
           </p>
         </div>
-        <button
-          onClick={() => refetch()}
-          className="btn-secondary"
-          title="Refresh"
-        >
-          <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex gap-2">
+          <div className="relative group">
+            <button className="btn-secondary">
+              <Download size={14} />
+              Export
+            </button>
+            <div className="absolute right-0 mt-1 w-32 bg-navy-900 border border-white/10 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <button
+                onClick={() => exportData('csv')}
+                className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-white/5 rounded-t-lg"
+              >
+                Export CSV
+              </button>
+              <button
+                onClick={() => exportData('json')}
+                className="w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-white/5 rounded-b-lg"
+              >
+                Export JSON
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => refetch()}
+            className="btn-secondary"
+            title="Refresh"
+          >
+            <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -140,7 +213,7 @@ export default function AuditLogPage() {
                 </td>
               </tr>
             ) : (
-              events.map((event) => (
+              events.map((event: ActivityEvent) => (
                 <tr key={event.id}>
                   <td className="whitespace-nowrap text-xs font-mono text-gray-400">
                     {new Date(event.created_at).toLocaleString('pt-BR', {

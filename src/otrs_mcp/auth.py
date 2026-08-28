@@ -13,7 +13,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from otrs_mcp.database import verify_admin_user, verify_api_key
+from otrs_mcp.database import check_rate_limit, verify_admin_user, verify_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,15 @@ JWT_SECRET = os.getenv("OTRS_JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = int(os.getenv("OTRS_JWT_EXPIRE_MINUTES", "480"))  # 8 hours
 
+# Em produção, JWT_SECRET deve ser definido explicitamente
+_IS_PRODUCTION = os.getenv("OTRS_ENV", "development").lower() == "production"
+
 if not JWT_SECRET:
+    if _IS_PRODUCTION:
+        raise RuntimeError(
+            "OTRS_JWT_SECRET deve ser definido em produção. "
+            "Gere um segredo com: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
     logger.warning(
         "OTRS_JWT_SECRET nao definido. Um segredo aleatorio sera gerado. "
         "Defina OTRS_JWT_SECRET para persistencia de tokens entre reinicios."
@@ -124,6 +132,8 @@ async def get_api_key_identity(
     Suporta:
     - API key via Authorization: Bearer sk-otrs-...
     - Admin JWT via Authorization: Bearer eyJ...
+
+    Também aplica rate limiting para API keys.
     """
     token = _extract_bearer_token(credentials)
     if not token:
@@ -154,11 +164,22 @@ async def get_api_key_identity(
             detail="API key invalida, inativa ou expirada",
         )
 
+    # Verificar rate limit
+    rate_limit = identity.get("rate_limit", 100)
+    if rate_limit > 0:
+        is_allowed, current_count = check_rate_limit(identity["id"], rate_limit)
+        if not is_allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Rate limit excedido ({current_count}/{rate_limit} requests/minuto)",
+                headers={"Retry-After": "60"},
+            )
+
     identity["is_admin"] = False
     return identity
 
 
-def require_permission(permission: str):
+def require_permission(permission: str) -> Any:
     """Factory de dependency que verifica se a identidade tem uma permissao especifica."""
 
     async def _check(

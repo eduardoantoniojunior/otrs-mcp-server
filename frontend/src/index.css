@@ -68,6 +68,11 @@
            border border-accent-rose/20 hover:bg-accent-rose/20 transition-all duration-150;
   }
 
+  .btn-amber {
+    @apply inline-flex items-center gap-2 px-4 py-2.5 bg-accent-amber/10 text-accent-amber text-sm font-medium rounded-lg
+           border border-accent-amber/20 hover:bg-accent-amber/20 transition-all duration-150;
+  }
+
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
   }

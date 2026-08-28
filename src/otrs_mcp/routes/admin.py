@@ -4,12 +4,13 @@ Fornece endpoints para:
 - Login/logout de administradores
 - CRUD de API keys para agentes
 - Consulta de uso de API keys
+- Auditoria de tentativas de login
 """
 
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from otrs_mcp.auth import (
@@ -23,8 +24,10 @@ from otrs_mcp.database import (
     delete_admin_user,
     delete_api_key,
     get_activity_log,
+    get_login_audit,
     list_admin_users,
     list_api_keys,
+    record_login_attempt,
     revoke_api_key,
     verify_admin_user,
 )
@@ -79,14 +82,34 @@ class CreateApiKeyResponse(BaseModel):
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest) -> LoginResponse:
+async def login(body: LoginRequest, request: Request) -> LoginResponse:
     """Autentica um administrador e retorna um token JWT."""
+    # Extrair informações para auditoria
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
     user = verify_admin_user(body.username, body.password)
     if user is None:
+        # Registrar tentativa falha
+        record_login_attempt(
+            username=body.username,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciais invalidas",
         )
+
+    # Registrar tentativa bem-sucedida
+    record_login_attempt(
+        username=body.username,
+        success=True,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
     token = create_access_token(user["id"], user["username"])
     return LoginResponse(
         access_token=token,
@@ -219,4 +242,17 @@ async def list_activity(
     """Retorna log de atividade dos agentes."""
     return get_activity_log(
         limit=limit, tool_filter=tool, status_filter=status, agent_filter=agent
+    )
+
+
+@router.get("/login-audit")
+async def list_login_audit(
+    limit: int = Query(50, ge=1, le=500),
+    username: str | None = Query(None),
+    success: bool | None = Query(None),
+    admin: dict[str, Any] = Depends(get_current_admin),
+) -> list[dict[str, Any]]:
+    """Retorna log de tentativas de login para auditoria."""
+    return get_login_audit(
+        limit=limit, username_filter=username, success_filter=success
     )

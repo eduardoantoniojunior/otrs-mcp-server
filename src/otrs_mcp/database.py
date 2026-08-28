@@ -172,6 +172,87 @@ def verify_api_key(api_key: str, db_path: str | None = None) -> dict[str, Any] |
         }
 
 
+def check_rate_limit(api_key_id: int, rate_limit: int, db_path: str | None = None) -> tuple[bool, int]:
+    """Verifica se a API key excedeu o rate limit (requests por minuto).
+
+    Retorna (is_allowed, requests_in_window).
+    """
+    if rate_limit <= 0:
+        return True, 0  # rate_limit=0 significa sem limite
+
+    from datetime import timedelta
+
+    window_start = (
+        datetime.now(timezone.utc) - timedelta(minutes=1)
+    ).isoformat()
+
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            """SELECT COUNT(*) as count FROM api_usage
+               WHERE api_key_id = ? AND created_at >= ?""",
+            (api_key_id, window_start),
+        ).fetchone()
+
+        count = row["count"] if row else 0
+        return count < rate_limit, count
+
+
+def record_login_attempt(
+    username: str,
+    success: bool,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    db_path: str | None = None,
+) -> None:
+    """Registra tentativa de login para auditoria."""
+    with get_db(db_path) as conn:
+        conn.execute(
+            """INSERT INTO login_audit (username, success, ip_address, user_agent, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (username, 1 if success else 0, ip_address, user_agent, _now_iso()),
+        )
+
+
+def get_login_audit(
+    limit: int = 50,
+    username_filter: str | None = None,
+    success_filter: bool | None = None,
+    db_path: str | None = None,
+) -> list[dict[str, Any]]:
+    """Retorna log de tentativas de login."""
+    conditions = []
+    params: list[Any] = []
+
+    if username_filter:
+        conditions.append("username = ?")
+        params.append(username_filter)
+    if success_filter is not None:
+        conditions.append("success = ?")
+        params.append(1 if success_filter else 0)
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+    with get_db(db_path) as conn:
+        rows = conn.execute(
+            f"""SELECT id, username, success, ip_address, user_agent, created_at
+                FROM login_audit {where}
+                ORDER BY created_at DESC LIMIT ?""",
+            (*params, limit),
+        ).fetchall()
+
+    return [
+        {
+            "id": r["id"],
+            "username": r["username"],
+            "success": bool(r["success"]),
+            "ip_address": r["ip_address"],
+            "user_agent": r["user_agent"],
+            "created_at": r["created_at"],
+        }
+        for r in rows
+    ]
+
+
 def list_api_keys(
     include_inactive: bool = False, db_path: str | None = None
 ) -> list[dict[str, Any]]:
@@ -456,9 +537,21 @@ CREATE TABLE IF NOT EXISTS api_usage (
     FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS login_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys(active);
 CREATE INDEX IF NOT EXISTS idx_api_usage_tool ON api_usage(tool);
 CREATE INDEX IF NOT EXISTS idx_api_usage_created ON api_usage(created_at);
 CREATE INDEX IF NOT EXISTS idx_api_usage_agent ON api_usage(agent_name);
+CREATE INDEX IF NOT EXISTS idx_api_usage_key_created ON api_usage(api_key_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_login_audit_username ON login_audit(username);
+CREATE INDEX IF NOT EXISTS idx_login_audit_created ON login_audit(created_at);
 """

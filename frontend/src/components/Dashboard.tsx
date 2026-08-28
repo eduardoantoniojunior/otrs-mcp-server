@@ -10,6 +10,10 @@ import {
   Plus,
   Zap,
   TrendingUp,
+  ShieldAlert,
+  AlertTriangle,
+  Clock,
+  XCircle,
 } from 'lucide-react';
 
 const TOOL_LABELS: Record<string, string> = {
@@ -19,6 +23,26 @@ const TOOL_LABELS: Record<string, string> = {
   update_ticket: 'update_ticket',
   get_ticket_history: 'get_ticket_history',
 };
+
+function isExpiringSoon(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  const expires = new Date(expiresAt);
+  const now = new Date();
+  const diffDays = (expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays > 0 && diffDays <= 7;
+}
+
+function isExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt) < new Date();
+}
+
+function daysUntilExpiry(expiresAt: string | null): number | null {
+  if (!expiresAt) return null;
+  const expires = new Date(expiresAt);
+  const now = new Date();
+  return Math.ceil((expires.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
 
 export default function Dashboard() {
   const { data: healthData, isLoading: healthLoading } = useHealth();
@@ -35,11 +59,25 @@ export default function Dashboard() {
     queryFn: () => api.listUsers(),
   });
 
+  const { data: loginAudit } = useQuery({
+    queryKey: ['login-audit-recent'],
+    queryFn: () => api.getLoginAudit({ limit: 50 }),
+  });
+
   const isOnline = healthData?.status === 'ok';
   const events = activityData?.events ?? [];
   const tokenCount = apiKeys?.length ?? 0;
   const userCount = adminUsers?.length ?? 0;
   const totalCalls = summary?.total_calls ?? 0;
+
+  // Security stats
+  const recentFailedLogins = loginAudit?.filter(a => !a.success).slice(0, 5) ?? [];
+  const failedLoginCount = loginAudit?.filter(a => !a.success).length ?? 0;
+  const expiringTokens = apiKeys?.filter(k => isExpiringSoon(k.expires_at) && !isExpired(k.expires_at)) ?? [];
+  const expiredTokens = apiKeys?.filter(k => isExpired(k.expires_at)) ?? [];
+  const neverUsedTokens = apiKeys?.filter(k => k.usage_count === 0 && k.active) ?? [];
+
+  const hasSecurityAlerts = failedLoginCount > 0 || expiringTokens.length > 0 || expiredTokens.length > 0;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -119,6 +157,95 @@ export default function Dashboard() {
           Test OTRS Connection
         </Link>
       </div>
+
+      {/* Security Alerts Card */}
+      {hasSecurityAlerts && (
+        <div className="glass-card p-5 border-amber-500/20">
+          <div className="flex items-center gap-2 mb-4">
+            <ShieldAlert size={18} className="text-amber-400" />
+            <h2 className="section-title">Security Alerts</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Failed Logins */}
+            {failedLoginCount > 0 && (
+              <div className="bg-navy-900/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <XCircle size={16} className="text-rose-400" />
+                  <span className="text-sm font-medium text-gray-200">Failed Logins</span>
+                </div>
+                <p className="text-2xl font-bold text-rose-400 mb-2">{failedLoginCount}</p>
+                <div className="space-y-1">
+                  {recentFailedLogins.slice(0, 3).map((attempt, i) => (
+                    <div key={i} className="text-xs text-gray-400 flex justify-between">
+                      <span>{attempt.username}</span>
+                      <span>{new Date(attempt.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                  ))}
+                </div>
+                <Link to="/login-audit" className="text-xs text-accent-blue hover:underline mt-2 block">
+                  View all →
+                </Link>
+              </div>
+            )}
+
+            {/* Expiring Tokens */}
+            {expiringTokens.length > 0 && (
+              <div className="bg-navy-900/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={16} className="text-amber-400" />
+                  <span className="text-sm font-medium text-gray-200">Expiring Soon</span>
+                </div>
+                <p className="text-2xl font-bold text-amber-400 mb-2">{expiringTokens.length}</p>
+                <div className="space-y-1">
+                  {expiringTokens.slice(0, 3).map((token) => (
+                    <div key={token.id} className="text-xs text-gray-400 flex justify-between">
+                      <span className="truncate max-w-[100px]">{token.name}</span>
+                      <span>{daysUntilExpiry(token.expires_at)}d left</span>
+                    </div>
+                  ))}
+                </div>
+                <Link to="/mcp-tokens?status=expiring" className="text-xs text-accent-blue hover:underline mt-2 block">
+                  Manage tokens →
+                </Link>
+              </div>
+            )}
+
+            {/* Expired Tokens */}
+            {expiredTokens.length > 0 && (
+              <div className="bg-navy-900/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Clock size={16} className="text-gray-400" />
+                  <span className="text-sm font-medium text-gray-200">Expired Tokens</span>
+                </div>
+                <p className="text-2xl font-bold text-gray-400 mb-2">{expiredTokens.length}</p>
+                <p className="text-xs text-gray-500">
+                  These tokens are no longer valid and can be deleted.
+                </p>
+                <Link to="/mcp-tokens?status=expired" className="text-xs text-accent-blue hover:underline mt-2 block">
+                  Clean up →
+                </Link>
+              </div>
+            )}
+
+            {/* Never Used Tokens */}
+            {neverUsedTokens.length > 0 && !expiredTokens.length && (
+              <div className="bg-navy-900/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Key size={16} className="text-gray-400" />
+                  <span className="text-sm font-medium text-gray-200">Never Used</span>
+                </div>
+                <p className="text-2xl font-bold text-gray-400 mb-2">{neverUsedTokens.length}</p>
+                <p className="text-xs text-gray-500">
+                  Active tokens that have never been used.
+                </p>
+                <Link to="/mcp-tokens" className="text-xs text-accent-blue hover:underline mt-2 block">
+                  Review →
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Active Tasks Panel */}
       <div className="glass-card p-5">

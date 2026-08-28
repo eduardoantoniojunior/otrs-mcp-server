@@ -119,6 +119,7 @@ export const api = {
       key_prefix: string;
       agent_name: string;
       permissions: string[];
+      rate_limit: number;
       active: boolean;
       usage_count: number;
       last_used_at: string | null;
@@ -130,6 +131,7 @@ export const api = {
     name: string;
     agent_name: string;
     permissions?: string[];
+    rate_limit?: number;
     expires_in_days?: number;
   }) =>
     request<{
@@ -203,5 +205,26 @@ export const api = {
         error_count: number;
       };
     }>(`/admin/activity${qs ? `?${qs}` : ''}`);
+  },
+
+  // Admin - Login Audit
+  getLoginAudit: (params: {
+    limit?: number;
+    username?: string;
+    success?: boolean;
+  } = {}) => {
+    const query = new URLSearchParams();
+    if (params.limit) query.set('limit', String(params.limit));
+    if (params.username) query.set('username', params.username);
+    if (params.success !== undefined) query.set('success', String(params.success));
+    const qs = query.toString();
+    return request<Array<{
+      id: number;
+      username: string;
+      success: boolean;
+      ip_address: string | null;
+      user_agent: string | null;
+      created_at: string;
+    }>>(`/admin/login-audit${qs ? `?${qs}` : ''}`);
   },
 };
