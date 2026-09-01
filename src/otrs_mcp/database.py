@@ -473,6 +473,80 @@ def get_activity_log(
     }
 
 
+def get_daily_metrics(days: int = 14, db_path: str | None = None) -> dict[str, Any]:
+    """Retorna metricas de atividade agrupadas por dia.
+
+    Retorna para cada dia: total de chamadas, sucesso, erro e por tool.
+    Tambem retorna top agents e distribuicao por tool.
+    """
+    from datetime import timedelta
+
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    with get_db(db_path) as conn:
+        # Atividade por dia
+        daily_rows = conn.execute(
+            """SELECT
+                 DATE(created_at) as day,
+                 COUNT(*) as total,
+                 SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success,
+                 SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
+               FROM api_usage
+               WHERE created_at >= ?
+               GROUP BY DATE(created_at)
+               ORDER BY day""",
+            (since,),
+        ).fetchall()
+
+        # Top agents no periodo
+        agent_rows = conn.execute(
+            """SELECT agent_name, COUNT(*) as total
+               FROM api_usage
+               WHERE created_at >= ? AND agent_name IS NOT NULL
+               GROUP BY agent_name
+               ORDER BY total DESC
+               LIMIT 10""",
+            (since,),
+        ).fetchall()
+
+        # Distribuicao por tool no periodo
+        tool_rows = conn.execute(
+            """SELECT tool, COUNT(*) as total,
+                      SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success,
+                      SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
+               FROM api_usage
+               WHERE created_at >= ?
+               GROUP BY tool
+               ORDER BY total DESC""",
+            (since,),
+        ).fetchall()
+
+    return {
+        "days": [
+            {
+                "date": r["day"],
+                "total": r["total"],
+                "success": r["success"] or 0,
+                "errors": r["errors"] or 0,
+            }
+            for r in daily_rows
+        ],
+        "top_agents": [
+            {"agent_name": r["agent_name"], "total": r["total"]}
+            for r in agent_rows
+        ],
+        "by_tool": [
+            {
+                "tool": r["tool"],
+                "total": r["total"],
+                "success": r["success"] or 0,
+                "errors": r["errors"] or 0,
+            }
+            for r in tool_rows
+        ],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

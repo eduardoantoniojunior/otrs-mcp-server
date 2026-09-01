@@ -92,8 +92,8 @@ OTRS_ENV = {
 
 # ---------- Configuração para modo HTTP (remoto) ----------
 
-# URL do MCP Server na AWS (porta 8081 = Caddy reverse proxy)
-OTRS_REMOTE_URL = "https://seu-dominio-ou-ip:8081/mcp"
+# URL do MCP Server na AWS (porta 443 via Nginx reverse proxy)
+OTRS_REMOTE_URL = "https://seu-dominio-ou-ip/mcp"
 
 # API Key gerada no painel web (API Keys)
 OTRS_API_KEY = "sk-otrs-sua-api-key-aqui"

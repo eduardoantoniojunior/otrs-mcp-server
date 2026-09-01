@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator
@@ -27,13 +26,9 @@ from otrs_mcp.exceptions import (
     OTRSValidationError,
 )
 from otrs_mcp.routes.admin import router as admin_router
+from otrs_mcp.validation import validate_ticket_id
 
 logger = logging.getLogger(__name__)
-
-_client: OTRSClient | None = None
-
-# Regex para validar ticket_id (apenas números, 1-20 dígitos)
-TICKET_ID_PATTERN = re.compile(r"^\d{1,20}$")
 
 _client: OTRSClient | None = None
 
@@ -105,7 +100,7 @@ app.add_middleware(
     allow_origins=[origin.strip() for origin in cors_origins if origin.strip()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-    allow_headers=["*"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Incluir rotas de administracao
@@ -120,12 +115,13 @@ def _get_client() -> OTRSClient:
 
 def _validate_ticket_id(ticket_id: str) -> str:
     """Valida que ticket_id é um número válido."""
-    if not TICKET_ID_PATTERN.match(ticket_id):
+    try:
+        return validate_ticket_id(ticket_id)
+    except OTRSValidationError:
         raise HTTPException(
             status_code=422,
             detail=f"ticket_id invalido: '{ticket_id}'. Deve conter apenas digitos (1-20).",
         )
-    return ticket_id
 
 
 class TicketCreate(BaseModel):
@@ -188,8 +184,9 @@ async def list_tickets(
     identity: dict[str, Any] = Depends(require_permission("read")),
 ) -> dict:
     client = _get_client()
+    start = time.monotonic()
     try:
-        return await client.search_tickets(
+        result = await client.search_tickets(
             customer_user=customer_user,
             customer_id=customer_id,
             queue=queue,
@@ -200,6 +197,16 @@ async def list_tickets(
             sort_by=sort_by,
             order_by=order_by,
         )
+        elapsed = (time.monotonic() - start) * 1000
+        record_activity(
+            tool="search_tickets",
+            status="success",
+            duration_ms=elapsed,
+            api_key_id=identity.get("id"),
+            agent_name=identity.get("agent_name"),
+            params={"queue": queue, "state": state, "title": title, "limit": limit},
+        )
+        return result
     except OTRSConnectionError as e:
         logger.error("Erro de conexao ao buscar tickets: %s", e)
         raise HTTPException(status_code=503, detail="Servico OTRS indisponivel")
@@ -208,7 +215,7 @@ async def list_tickets(
         raise HTTPException(status_code=401, detail="Credenciais OTRS invalidas")
     except OTRSAPIError as e:
         logger.error("Erro da API OTRS ao buscar tickets: %s", e)
-        raise HTTPException(status_code=502, detail=f"Erro na API OTRS: {str(e)}")
+        raise HTTPException(status_code=502, detail="Erro na comunicacao com o OTRS")
     except Exception as e:
         logger.error("Erro inesperado ao buscar tickets: %s", e)
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
@@ -221,8 +228,20 @@ async def get_ticket(
 ) -> dict:
     _validate_ticket_id(ticket_id)
     client = _get_client()
+    start = time.monotonic()
     try:
-        return await client.get_ticket(ticket_id=ticket_id)
+        result = await client.get_ticket(ticket_id=ticket_id)
+        elapsed = (time.monotonic() - start) * 1000
+        record_activity(
+            tool="get_ticket",
+            status="success",
+            duration_ms=elapsed,
+            api_key_id=identity.get("id"),
+            agent_name=identity.get("agent_name"),
+            params={"ticket_id": ticket_id},
+            ticket_id=ticket_id,
+        )
+        return result
     except OTRSTicketNotFoundError as e:
         logger.error("Ticket %s nao encontrado: %s", ticket_id, e)
         raise HTTPException(
@@ -236,7 +255,7 @@ async def get_ticket(
         raise HTTPException(status_code=401, detail="Credenciais OTRS invalidas")
     except OTRSAPIError as e:
         logger.error("Erro da API OTRS ao obter ticket %s: %s", ticket_id, e)
-        raise HTTPException(status_code=502, detail=f"Erro na API OTRS: {str(e)}")
+        raise HTTPException(status_code=502, detail="Erro na comunicacao com o OTRS")
     except Exception as e:
         logger.error("Erro inesperado ao obter ticket %s: %s", ticket_id, e)
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
@@ -285,7 +304,7 @@ async def create_ticket(
         raise HTTPException(status_code=401, detail="Credenciais OTRS invalidas")
     except OTRSAPIError as e:
         logger.error("Erro da API OTRS ao criar ticket: %s", e)
-        raise HTTPException(status_code=502, detail=f"Erro na API OTRS: {str(e)}")
+        raise HTTPException(status_code=502, detail="Erro na comunicacao com o OTRS")
     except Exception as e:
         logger.error("Erro inesperado ao criar ticket: %s", e)
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
@@ -341,7 +360,7 @@ async def update_ticket(
         raise HTTPException(status_code=401, detail="Credenciais OTRS invalidas")
     except OTRSAPIError as e:
         logger.error("Erro da API OTRS ao atualizar ticket %s: %s", ticket_id, e)
-        raise HTTPException(status_code=502, detail=f"Erro na API OTRS: {str(e)}")
+        raise HTTPException(status_code=502, detail="Erro na comunicacao com o OTRS")
     except Exception as e:
         logger.error("Erro inesperado ao atualizar ticket %s: %s", ticket_id, e)
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
@@ -354,8 +373,20 @@ async def get_ticket_history(
 ) -> dict:
     _validate_ticket_id(ticket_id)
     client = _get_client()
+    start = time.monotonic()
     try:
-        return await client.get_ticket_history(ticket_id=ticket_id)
+        result = await client.get_ticket_history(ticket_id=ticket_id)
+        elapsed = (time.monotonic() - start) * 1000
+        record_activity(
+            tool="get_ticket_history",
+            status="success",
+            duration_ms=elapsed,
+            api_key_id=identity.get("id"),
+            agent_name=identity.get("agent_name"),
+            params={"ticket_id": ticket_id},
+            ticket_id=ticket_id,
+        )
+        return result
     except OTRSTicketNotFoundError as e:
         logger.error("Ticket %s nao encontrado ao buscar historico: %s", ticket_id, e)
         raise HTTPException(
@@ -375,7 +406,7 @@ async def get_ticket_history(
         logger.error(
             "Erro da API OTRS ao obter historico do ticket %s: %s", ticket_id, e
         )
-        raise HTTPException(status_code=502, detail=f"Erro na API OTRS: {str(e)}")
+        raise HTTPException(status_code=502, detail="Erro na comunicacao com o OTRS")
     except Exception as e:
         logger.error(
             "Erro inesperado ao obter historico do ticket %s: %s", ticket_id, e

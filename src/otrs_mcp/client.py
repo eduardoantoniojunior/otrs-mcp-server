@@ -26,6 +26,7 @@ class OTRSClient:
     def __init__(self, config: OTRSConfig) -> None:
         self._config = config
         self._session_id: str | None = None
+        self._session_lock = asyncio.Lock()
         self._http_client: httpx.AsyncClient = httpx.AsyncClient(
             verify=config.verify_ssl,
             follow_redirects=True,
@@ -92,9 +93,13 @@ class OTRSClient:
 
     async def _ensure_session(self) -> str:
         """Garante que existe uma sessao ativa, criando uma se necessario."""
-        if self._session_id is None:
-            self._session_id = await self._create_session()
-        return self._session_id
+        if self._session_id is not None:
+            return self._session_id
+        async with self._session_lock:
+            # Double-check após adquirir o lock
+            if self._session_id is None:
+                self._session_id = await self._create_session()
+            return self._session_id
 
     def _invalidate_session(self) -> None:
         """Invalida a sessao atual para forcar recriacao."""

@@ -1,0 +1,63 @@
+# /etc/fail2ban/jail.local
+#
+# Instalacao:
+#   sudo apt install fail2ban
+#   sudo cp deploy/fail2ban/jail.local /etc/fail2ban/jail.local
+#   sudo cp deploy/fail2ban/filter.d/* /etc/fail2ban/filter.d/
+#   sudo systemctl restart fail2ban
+#   sudo systemctl enable fail2ban
+#
+# Verificar:
+#   sudo fail2ban-client status
+#   sudo fail2ban-client status otrs-mcp-login
+#   sudo fail2ban-client status otrs-mcp-api
+#   sudo fail2ban-client status nginx-botsearch
+#
+
+[DEFAULT]
+# Ban por 1 hora, janela de 10 minutos
+bantime  = 3600
+findtime = 600
+maxretry = 5
+banaction = iptables-multiport
+
+# Email de notificacao (opcional, requer sendmail/postfix)
+# destemail = admin@beonup.com.br
+# sender    = fail2ban@beonup.com.br
+# action    = %(action_mwl)s
+
+# ---------------------------------------------------------------------------
+# OTRS MCP — Login bruteforce (401 no /api/admin/login)
+# ---------------------------------------------------------------------------
+[otrs-mcp-login]
+enabled  = true
+port     = http,https
+filter   = otrs-mcp-login
+logpath  = /var/log/nginx/access.log
+maxretry = 5
+findtime = 300
+bantime  = 900
+
+# ---------------------------------------------------------------------------
+# OTRS MCP — API abuse (muitas requests sem auth ou com erro)
+# ---------------------------------------------------------------------------
+[otrs-mcp-api]
+enabled  = true
+port     = http,https
+filter   = otrs-mcp-api
+logpath  = /var/log/nginx/access.log
+maxretry = 20
+findtime = 60
+bantime  = 600
+
+# ---------------------------------------------------------------------------
+# Nginx — Bot/scanner detection (404 em massa, probing paths)
+# ---------------------------------------------------------------------------
+[nginx-botsearch]
+enabled  = true
+port     = http,https
+filter   = nginx-botsearch
+logpath  = /var/log/nginx/access.log
+maxretry = 10
+findtime = 300
+bantime  = 3600

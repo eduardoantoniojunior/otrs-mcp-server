@@ -9,8 +9,9 @@ from mcp.server.fastmcp import FastMCP
 from otrs_mcp.activity import record_tool_call
 from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
-from otrs_mcp.constants import VALID_PRIORITIES, VALID_QUEUES
+from otrs_mcp.constants import VALID_PRIORITIES
 from otrs_mcp.exceptions import OTRSValidationError
+from otrs_mcp.validation import validate_ticket_id
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,7 @@ async def get_ticket(
     include_dynamic_fields: bool = True,
     include_extended_data: bool = True,
 ) -> dict[str, Any]:
+    validate_ticket_id(ticket_id)
     client = _get_client()
     start = time.monotonic()
     try:
@@ -222,6 +224,7 @@ async def update_ticket(
     customer_user: str | None = None,
     owner: str | None = None,
 ) -> dict[str, Any]:
+    validate_ticket_id(ticket_id)
     client = _get_client()
 
     if priority and priority.lower() not in {p.lower() for p in VALID_PRIORITIES}:
@@ -278,6 +281,7 @@ async def update_ticket(
 
 @mcp.tool(description="Get ticket history from OTRS")
 async def get_ticket_history(ticket_id: str) -> dict[str, Any]:
+    validate_ticket_id(ticket_id)
     client = _get_client()
     start = time.monotonic()
     try:

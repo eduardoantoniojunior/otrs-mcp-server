@@ -1,0 +1,29 @@
+# /etc/logrotate.d/otrs-mcp
+#
+# Instalacao:
+#   sudo cp deploy/otrs-mcp.logrotate /etc/logrotate.d/otrs-mcp
+#
+# Rotaciona logs dos containers Docker do OTRS MCP Server.
+# Docker por padrao nao rotaciona logs — sem isso, os arquivos
+# em /var/lib/docker/containers/*/...json.log crescem sem limite.
+#
+# Alternativa (recomendada): configurar log driver no daemon.json:
+#   /etc/docker/daemon.json:
+#   {
+#     "log-driver": "json-file",
+#     "log-opts": {
+#       "max-size": "10m",
+#       "max-file": "3"
+#     }
+#   }
+
+/var/lib/docker/containers/*/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    maxsize 50M
+}

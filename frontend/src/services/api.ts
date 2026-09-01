@@ -8,7 +8,19 @@ import type {
   ActivitySummary,
 } from '../types/ticket';
 
-const API_BASE = '/api';
+// API_BASE respeita o subpath configurado via VITE_BASE_PATH
+// Sem subpath: BASE_URL="/" → API_BASE="/api"
+// Com subpath: BASE_URL="/otrs/" → API_BASE="/otrs/api"
+const _base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+const API_BASE = `${_base}/api`;
+const REQUEST_TIMEOUT_MS = 30_000;
+
+// Callback de logout — injetado pelo AuthContext para evitar acoplamento
+let _onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(callback: () => void) {
+  _onUnauthorized = callback;
+}
 
 function getToken(): string | null {
   return localStorage.getItem('otrs_token');
@@ -25,23 +37,38 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers,
-  });
+  // Timeout via AbortController
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  if (response.status === 401) {
-    localStorage.removeItem('otrs_token');
-    localStorage.removeItem('otrs_user');
-    window.location.href = '/login';
-    throw new Error('Sessao expirada');
-  }
+  try {
+    const response = await fetch(`${API_BASE}${url}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || 'Erro na requisicao');
+    if (response.status === 401) {
+      // Usar callback centralizado em vez de window.location
+      if (_onUnauthorized) {
+        _onUnauthorized();
+      }
+      throw new Error('Sessao expirada');
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(error.detail || 'Erro na requisicao');
+    }
+    return response.json();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Tempo limite da requisicao excedido');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return response.json();
 }
 
 export const api = {
@@ -87,7 +114,7 @@ export const api = {
   getTicketHistory: (ticketId: string) =>
     request<TicketHistory>(`/tickets/${ticketId}/history`),
 
-  // Activity (public, requires API key)
+  // Activity (requires auth)
   getActivity: (params: {
     limit?: number;
     tool?: string;
@@ -227,4 +254,12 @@ export const api = {
       created_at: string;
     }>>(`/admin/login-audit${qs ? `?${qs}` : ''}`);
   },
+
+  // Admin - Daily Metrics (charts)
+  getDailyMetrics: (days: number = 14) =>
+    request<{
+      days: Array<{ date: string; total: number; success: number; errors: number }>;
+      top_agents: Array<{ agent_name: string; total: number }>;
+      by_tool: Array<{ tool: string; total: number; success: number; errors: number }>;
+    }>(`/admin/metrics/daily?days=${days}`),
 };

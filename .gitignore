@@ -208,3 +208,9 @@ frontend/*.tsbuildinfo
 
 # Activity data (runtime)
 activity.json
+
+# Kiro
+.kiro/settings/
+
+# Backups
+backups/*.db.gz

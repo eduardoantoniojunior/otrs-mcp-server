@@ -1,0 +1,63 @@
+# =============================================================================
+# OpenTelemetry Collector — Config para OTRS MCP Server
+# =============================================================================
+# Recebe traces/metrics dos containers (api + mcp-server + frontend browser)
+# e encaminha para o Tempo/Mimir self-hosted via OTLP HTTP.
+#
+# Variáveis de ambiente necessárias:
+#   OTEL_TEMPO_ENDPOINT — URL do Tempo OTLP (ex: http://172.31.x.x:4318)
+# =============================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "*"
+          allowed_headers:
+            - "*"
+
+processors:
+  # Enriquecer com metadados do host
+  resourcedetection:
+    detectors: [env, system, docker]
+    system:
+      hostname_sources: [os]
+    timeout: 2s
+
+  # Agrupar para eficiência
+  batch:
+    send_batch_size: 512
+    timeout: 5s
+
+  # Limitar memória
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  # Enviar para Tempo/Mimir self-hosted via OTLP HTTP
+  otlphttp/tempo:
+    endpoint: ${env:OTEL_TEMPO_ENDPOINT}
+    tls:
+      insecure: true
+
+  # Debug (descomente para troubleshooting)
+  # debug:
+  #   verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlphttp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlphttp/tempo]

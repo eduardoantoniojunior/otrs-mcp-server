@@ -1,0 +1,50 @@
+# /etc/systemd/system/otrs-mcp.service
+#
+# Instalacao:
+#   sudo cp deploy/otrs-mcp.service /etc/systemd/system/otrs-mcp.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable otrs-mcp
+#   sudo systemctl start otrs-mcp
+#
+# Comandos:
+#   sudo systemctl status otrs-mcp
+#   sudo systemctl restart otrs-mcp
+#   sudo journalctl -u otrs-mcp -f
+#
+
+[Unit]
+Description=OTRS MCP Server (Docker Compose)
+Documentation=https://github.com/eduardoantoniojunior/otrs-mcp-server
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/otrs-mcp-server
+
+# Iniciar
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+
+# Parar gracefully (30s timeout para os containers finalizarem)
+ExecStop=/usr/bin/docker compose down --timeout 30
+
+# Restart (usado por systemctl restart)
+ExecReload=/usr/bin/docker compose restart
+
+# Timeout de 120s para o start (pull de imagens pode demorar)
+TimeoutStartSec=120
+TimeoutStopSec=60
+
+# Reiniciar automaticamente se falhar
+Restart=on-failure
+RestartSec=30
+
+# Logs no journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=otrs-mcp
+
+[Install]
+WantedBy=multi-user.target

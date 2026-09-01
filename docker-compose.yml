@@ -1,25 +1,37 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    env_file: .env
-    restart: unless-stopped
-    cap_add:
-      - NET_ADMIN
-    ports:
-      - "8081:8081"
-      - "8443:8443"
-      - "8443:8443/udp"
+  # ---------------------------------------------------------------------------
+  # OpenTelemetry Collector — recebe traces e encaminha para Tempo/Mimir
+  # ---------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.108.0
+    command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
-      - frontend
-      - mcp-server
+      - ./otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    environment:
+      - OTEL_TEMPO_ENDPOINT=${OTEL_TEMPO_ENDPOINT:-http://localhost:4318}
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 64M
     networks:
-      - edge
+      - otrs-mcp
 
+  # ---------------------------------------------------------------------------
+  # API REST (FastAPI) — auto-instrumentada via opentelemetry-instrument
+  # ---------------------------------------------------------------------------
   api:
     build:
       context: .
@@ -31,58 +43,104 @@ services:
       - OTRS_MCP_TRANSPORT=http
       - OTRS_MCP_HOST=mcp-server
       - OTRS_MCP_PORT=8001
+      # OpenTelemetry
+      - OTEL_SERVICE_NAME=otrs-mcp-api
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_RESOURCE_ATTRIBUTES=service.namespace=otrs-mcp,deployment.environment=production
     volumes:
       - app_data:/data
-    expose:
-      - "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
     restart: unless-stopped
+    depends_on:
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:3000/api/health').raise_for_status()" ]
       interval: 30s
       timeout: 10s
       start_period: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
     networks:
-      - edge
+      - otrs-mcp
 
+  # ---------------------------------------------------------------------------
+  # MCP Server (FastMCP) — auto-instrumentado via opentelemetry-instrument
+  # ---------------------------------------------------------------------------
   mcp-server:
     build: .
     env_file: .env
     environment:
-      - OTRS_ACTIVITY_FILE=/data/activity.json
-      - OTRS_DB_PATH=/data/otrs-mcp.db
       - OTRS_MCP_TRANSPORT=http
       - OTRS_MCP_HOST=0.0.0.0
       - OTRS_MCP_PORT=8001
-    volumes:
-      - app_data:/data
-    expose:
-      - "8001"
+      # OpenTelemetry
+      - OTEL_SERVICE_NAME=otrs-mcp-server
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_RESOURCE_ATTRIBUTES=service.namespace=otrs-mcp,deployment.environment=production
+    ports:
+      - "127.0.0.1:8001:8001"
     restart: unless-stopped
+    depends_on:
+      otel-collector:
+        condition: service_started
     healthcheck:
       test: [ "CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.connect(('localhost', 8001)); s.close()\"" ]
       interval: 30s
       timeout: 10s
       start_period: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          memory: 128M
     networks:
-      - edge
+      - otrs-mcp
 
+  # ---------------------------------------------------------------------------
+  # Frontend (React SPA + Nginx)
+  # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    expose:
-      - "80"
+      args:
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
+        VITE_OTEL_ENDPOINT: ${VITE_OTEL_ENDPOINT:-}
+    ports:
+      - "127.0.0.1:8080:80"
     restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1" ]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          memory: 32M
     networks:
-      - edge
+      - otrs-mcp
 
 volumes:
   app_data:
-  caddy_data:
-  caddy_config:
 
 networks:
-  edge:
+  otrs-mcp:
     driver: bridge

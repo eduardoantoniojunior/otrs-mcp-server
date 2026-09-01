@@ -66,16 +66,6 @@ class TestCreateTicket:
 
         mock_client.create_ticket.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_create_ticket_invalid_queue_raises(
-        self, initialized_tools, mock_client
-    ) -> None:
-        """create_ticket deve rejeitar fila invalida."""
-        with pytest.raises(OTRSValidationError, match="Fila invalida"):
-            await create_ticket(title="Test", body="Body", queue="InvalidQueue")
-
-        mock_client.create_ticket.assert_not_called()
-
 
 class TestGetTicket:
     """Testes para a tool get_ticket."""
@@ -116,6 +106,7 @@ class TestSearchTickets:
 
         mock_client.search_tickets.assert_called_once_with(
             customer_user=None,
+            customer_id=None,
             queue=None,
             state=None,
             priority=None,
@@ -141,6 +132,7 @@ class TestSearchTickets:
 
         mock_client.search_tickets.assert_called_once_with(
             customer_user="user@test.com",
+            customer_id=None,
             queue="Raw",
             state="open",
             priority="3 normal",

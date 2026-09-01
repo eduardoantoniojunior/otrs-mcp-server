@@ -1,7 +1,5 @@
 """Constantes do OTRS MCP Server."""
 
-VALID_QUEUES = frozenset({"Raw", "Junk", "Misc"})
-
 VALID_PRIORITIES = frozenset(
     {"1 very low", "2 low", "3 normal", "4 high", "5 very high"}
 )

@@ -8,6 +8,7 @@ Fornece endpoints para:
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -35,6 +36,45 @@ from otrs_mcp.database import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+# ---------------------------------------------------------------------------
+# Brute-force protection
+# ---------------------------------------------------------------------------
+
+# Configuracao: max tentativas e periodo de lockout
+_MAX_LOGIN_ATTEMPTS = 5
+_LOCKOUT_SECONDS = 900  # 15 minutos
+
+
+def _is_locked_out(ip_address: str | None, username: str) -> bool:
+    """Verifica lockout consultando tentativas recentes no login_audit (SQLite)."""
+    from otrs_mcp.database import get_db
+
+    window_start = (
+        datetime.now(timezone.utc) - timedelta(seconds=_LOCKOUT_SECONDS)
+    ).isoformat()
+
+    with get_db() as conn:
+        # Verificar por username
+        row = conn.execute(
+            """SELECT COUNT(*) as cnt FROM login_audit
+               WHERE username = ? AND success = 0 AND created_at >= ?""",
+            (username, window_start),
+        ).fetchone()
+        if row and row["cnt"] >= _MAX_LOGIN_ATTEMPTS:
+            return True
+
+        # Verificar por IP
+        if ip_address:
+            row = conn.execute(
+                """SELECT COUNT(*) as cnt FROM login_audit
+                   WHERE ip_address = ? AND success = 0 AND created_at >= ?""",
+                (ip_address, window_start),
+            ).fetchone()
+            if row and row["cnt"] >= _MAX_LOGIN_ATTEMPTS:
+                return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +128,25 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
 
+    # Verificar lockout por IP e por username
+    if _is_locked_out(ip_address, body.username):
+        logger.warning(
+            "Login bloqueado por brute-force protection: user=%s ip=%s",
+            body.username,
+            ip_address,
+        )
+        record_login_attempt(
+            username=body.username,
+            success=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Muitas tentativas de login. Tente novamente em 15 minutos.",
+            headers={"Retry-After": str(_LOCKOUT_SECONDS)},
+        )
+
     user = verify_admin_user(body.username, body.password)
     if user is None:
         # Registrar tentativa falha
@@ -122,6 +181,21 @@ async def login(body: LoginRequest, request: Request) -> LoginResponse:
 async def get_me(admin: dict[str, Any] = Depends(get_current_admin)) -> dict[str, Any]:
     """Retorna dados do administrador autenticado."""
     return {"user_id": admin["user_id"], "username": admin["username"]}
+
+
+@router.post("/refresh", response_model=LoginResponse)
+async def refresh_token(admin: dict[str, Any] = Depends(get_current_admin)) -> LoginResponse:
+    """Renova o JWT do admin autenticado sem exigir senha novamente.
+
+    O token atual deve ser valido (nao expirado). Retorna um novo token
+    com novo exp/iat/jti mantendo o mesmo user_id e username.
+    """
+    new_token = create_access_token(admin["user_id"], admin["username"])
+    return LoginResponse(
+        access_token=new_token,
+        username=admin["username"],
+        user_id=admin["user_id"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -256,3 +330,14 @@ async def list_login_audit(
     return get_login_audit(
         limit=limit, username_filter=username, success_filter=success
     )
+
+
+@router.get("/metrics/daily")
+async def daily_metrics(
+    days: int = Query(14, ge=1, le=90),
+    admin: dict[str, Any] = Depends(get_current_admin),
+) -> dict[str, Any]:
+    """Retorna metricas de uso agrupadas por dia para o dashboard."""
+    from otrs_mcp.database import get_daily_metrics as _get_daily_metrics
+
+    return _get_daily_metrics(days=days)

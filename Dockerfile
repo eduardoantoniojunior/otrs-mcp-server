@@ -1,6 +1,6 @@
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.12.8-slim-bookworm AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /usr/local/bin/uv
 
 WORKDIR /app
 
@@ -11,13 +11,13 @@ COPY uv.lock ./
 COPY src ./src/
 
 RUN uv venv && \
-    uv pip install .
+    uv pip install . && \
+    uv pip install opentelemetry-instrumentation-httpx \
+                   opentelemetry-instrumentation-logging
 
-FROM python:3.12-slim-bookworm
+FROM python:3.12.8-slim-bookworm
 
 WORKDIR /app
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 RUN groupadd -r otrs && useradd -r -g otrs otrs
 
@@ -35,9 +35,10 @@ RUN mkdir -p /data && chown -R otrs:otrs /app /data
 USER otrs
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python -c "import httpx; print('healthy')" || exit 1
+  CMD python -c "import socket; s=socket.socket(); s.connect(('localhost', 8001)); s.close()" || exit 1
 
-CMD ["python", "-m", "otrs_mcp.main"]
+# Zero-code: opentelemetry-instrument wraps o MCP server
+CMD ["opentelemetry-instrument", "python", "-m", "otrs_mcp.main"]
 
 LABEL org.opencontainers.image.title="OTRS MCP Server" \
       org.opencontainers.image.description="Model Context Protocol server for OTRS integration" \
@@ -45,6 +46,4 @@ LABEL org.opencontainers.image.title="OTRS MCP Server" \
       org.opencontainers.image.authors="Eduardo Antonio" \
       org.opencontainers.image.source="https://github.com/eduardoantoniojunior/otrs-mcp-server" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.url="https://github.com/eduardoantoniojunior/otrs-mcp-server" \
-      org.opencontainers.image.documentation="https://github.com/eduardoantoniojunior/otrs-mcp-server#readme" \
       org.opencontainers.image.vendor="BeOnUp"

@@ -76,8 +76,17 @@ def record_tool_call(
     error: str | None = None,
     ticket_id: str | None = None,
 ) -> None:
-    """Registra uma chamada de tool MCP."""
+    """Registra uma chamada de tool MCP.
+
+    Falha silenciosamente se o arquivo de atividade não for acessível
+    (ex: container MCP sem volume montado).
+    """
     path = Path(_activity_file)
+
+    # Se o diretório pai não existe, não tenta escrever (container sem volume)
+    if not path.parent.exists():
+        return
+
     event = {
         "tool": tool,
         "status": status,

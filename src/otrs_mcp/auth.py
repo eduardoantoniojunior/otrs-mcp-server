@@ -6,6 +6,7 @@ Suporta ambos os mecanismos de autenticacao nos endpoints de tickets.
 
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -54,13 +55,14 @@ def create_access_token(
     user_id: int, username: str, expires_delta: timedelta | None = None
 ) -> str:
     """Gera um token JWT para o usuario admin."""
-    expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=JWT_EXPIRE_MINUTES)
-    )
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=JWT_EXPIRE_MINUTES))
     payload = {
         "sub": str(user_id),
         "username": username,
         "exp": expire,
+        "iat": now,
+        "jti": secrets.token_hex(16),
         "type": "admin",
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)

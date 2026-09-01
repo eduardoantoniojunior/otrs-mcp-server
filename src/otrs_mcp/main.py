@@ -38,7 +38,7 @@ def _install_auth_middleware() -> None:
             logger.warning(
                 "FastMCP version does not support add_middleware(). "
                 "MCP HTTP transport will run without auth middleware. "
-                "Use a reverse proxy (Caddy) for authentication."
+                "Use a reverse proxy (Nginx) for authentication."
             )
             return
 
@@ -58,7 +58,7 @@ def _install_auth_middleware() -> None:
         logger.warning(
             "Could not install auth middleware. "
             "MCP HTTP transport running without auth. "
-            "Use Caddy reverse proxy for API key authentication."
+            "Use Nginx reverse proxy for API key authentication."
         )
     except Exception as e:
         logger.warning("Failed to install auth middleware: %s", e)

@@ -56,6 +56,8 @@ export default function LoginPage() {
                 className="input-dark"
                 placeholder="Username"
                 required
+                minLength={3}
+                maxLength={100}
                 autoFocus
               />
             </div>
@@ -72,6 +74,8 @@ export default function LoginPage() {
                   className="input-dark pr-10"
                   placeholder="Password"
                   required
+                  minLength={6}
+                  maxLength={128}
                 />
                 <button
                   type="button"
