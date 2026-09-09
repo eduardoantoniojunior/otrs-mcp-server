@@ -120,7 +120,7 @@ services:
         VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
         VITE_OTEL_ENDPOINT: ${VITE_OTEL_ENDPOINT:-}
     ports:
-      - "127.0.0.1:8080:80"
+      - "127.0.0.1:8081:80"
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1" ]
