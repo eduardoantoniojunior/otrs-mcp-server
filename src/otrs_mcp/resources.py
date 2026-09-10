@@ -3,6 +3,7 @@
 import json
 import logging
 
+from otrs_mcp.mcp_auth import require_scope
 from otrs_mcp.tools import _get_client, mcp
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 async def ticket_resource(ticket_id: str) -> str:
     """Retorna dados do ticket com links para a interface web."""
     try:
+        require_scope("read")
         client = _get_client()
         ticket = await client.get_ticket(ticket_id=ticket_id)
         return json.dumps(ticket, indent=2)
@@ -24,6 +26,7 @@ async def ticket_resource(ticket_id: str) -> str:
 async def ticket_history_resource(ticket_id: str) -> str:
     """Retorna historico do ticket com links para a interface web."""
     try:
+        require_scope("read")
         client = _get_client()
         history = await client.get_ticket_history(ticket_id=ticket_id)
         return json.dumps(history, indent=2)
@@ -36,6 +39,7 @@ async def ticket_history_resource(ticket_id: str) -> str:
 async def search_tickets_resource() -> str:
     """Retorna tickets recentes com links para a interface web."""
     try:
+        require_scope("read")
         client = _get_client()
         tickets = await client.search_tickets(limit=20)
         return json.dumps(tickets, indent=2)

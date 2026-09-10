@@ -25,6 +25,10 @@ class OTRSValidationError(OTRSError):
     """Erro de validacao de dados enviados ao OTRS."""
 
 
+class OTRSPermissionError(OTRSError):
+    """Credencial ausente ou sem permissao para a operacao solicitada."""
+
+
 class OTRSAPIError(OTRSError):
     """Erro retornado pela API do OTRS."""
 

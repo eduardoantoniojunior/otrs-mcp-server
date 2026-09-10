@@ -82,11 +82,16 @@ services:
       - OTRS_MCP_TRANSPORT=http
       - OTRS_MCP_HOST=0.0.0.0
       - OTRS_MCP_PORT=8001
+      # Banco compartilhado com a API: necessario para validar as API keys
+      - OTRS_DB_PATH=/data/otrs-mcp.db
+      - OTRS_ACTIVITY_FILE=/data/activity.json
       # OpenTelemetry
       - OTEL_SERVICE_NAME=otrs-mcp-server
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_RESOURCE_ATTRIBUTES=service.namespace=otrs-mcp,deployment.environment=production
+    volumes:
+      - app_data:/data
     ports:
       - "127.0.0.1:8001:8001"
     restart: unless-stopped

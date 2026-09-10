@@ -1,156 +1,116 @@
 # OTRS MCP Server
 
-Servidor [Model Context Protocol][mcp] (MCP) para integracao com o [OTRS](https://otrs.org/) (Open Ticket Request System).
+Servidor [Model Context Protocol][mcp] (MCP) para integração com o [OTRS](https://otrs.org/) (Open Ticket Request System).
 
-Permite que assistentes de IA (como Claude Desktop, VS Code, agentes Python) criem, consultem, busquem e atualizem tickets no OTRS por meio de uma interface padronizada. Inclui API REST autenticada, painel administrativo React com dashboard de metricas, observabilidade via OpenTelemetry e deploy em producao com HTTPS, systemd, backup automatico e protecao contra ataques.
+Permite que assistentes de IA (Claude Desktop, VS Code, Kiro, agentes Python) criem, consultem, busquem e atualizem tickets no OTRS por uma interface padronizada. Acompanha uma API REST autenticada, painel administrativo em React, auditoria em SQLite e instrumentação OpenTelemetry.
 
-[mcp]: https://modelcontextprotocol.io/introduction/introduction
+[mcp]: https://modelcontextprotocol.io/introduction
+
+**Versão:** 0.2.0 · **Python:** 3.12+ · **Licença:** Apache-2.0
 
 ---
 
-## Sumario
+## Sumário
 
+- [O que o servidor oferece](#o-que-o-servidor-oferece)
 - [Arquitetura](#arquitetura)
-- [Funcionalidades](#funcionalidades)
-- [Pre-requisitos](#pre-requisitos)
-- [Deploy](#deploy)
-- [Deploy com Subpath](#deploy-com-subpath)
-- [Producao](#producao)
-- [Configuracao](#configuracao)
-- [Uso do MCP Server](#uso-do-mcp-server)
-- [Referencia da API REST](#referencia-da-api-rest)
-- [Referencia das Tools MCP](#referencia-das-tools-mcp)
-- [Referencia dos Resources MCP](#referencia-dos-resources-mcp)
-- [Painel Administrativo](#painel-administrativo)
-- [Seguranca](#seguranca)
-- [Observabilidade (OpenTelemetry)](#observabilidade-opentelemetry)
-- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Pré-requisitos](#pré-requisitos)
+- [Início rápido](#início-rápido)
+- [Como usar o MCP](#como-usar-o-mcp)
+- [Tools MCP](#tools-mcp)
+- [Resources MCP](#resources-mcp)
+- [API REST](#api-rest)
+- [Configuração](#configuração)
+- [API keys](#api-keys)
+- [Painel administrativo](#painel-administrativo)
+- [Segurança](#segurança)
+- [Observabilidade](#observabilidade)
+- [Deploy em produção](#deploy-em-produção)
+- [Estrutura do projeto](#estrutura-do-projeto)
 - [Desenvolvimento](#desenvolvimento)
-- [Solucao de Problemas](#solucao-de-problemas)
-- [Licenca](#licenca)
+- [Limitações conhecidas](#limitações-conhecidas)
+- [Solução de problemas](#solução-de-problemas)
+
+---
+
+## O que o servidor oferece
+
+Três formas de consumir o mesmo backend OTRS:
+
+| Interface | Para quem | Autenticação |
+|---|---|---|
+| **MCP** (`streamable-http`) | Agentes de IA e clientes MCP remotos | API key obrigatória no header `Authorization` |
+| **MCP** (`stdio`) | Cliente MCP local que sobe o processo | Nenhuma (sem rede; credenciais vêm do ambiente) |
+| **API REST** (FastAPI) | Scripts, integrações, o próprio frontend | API key ou JWT |
+| **Painel web** (React) | Administradores humanos | JWT (login com usuário e senha) |
+
+Operações OTRS cobertas: `SessionCreate`, `TicketCreate`, `TicketGet`, `TicketSearch`, `TicketUpdate`, `TicketHistoryGet`.
 
 ---
 
 ## Arquitetura
 
 ```
-┌──────────────────────────┐       ┌──────────────────────────┐
-│   Agente IA              │       │   Navegador Admin        │
-│ (Claude Desktop, Python) │       │ https://seu-dominio       │
-└──────────┬───────────────┘       └──────────┬───────────────┘
-           │ HTTPS + API Key                   │ HTTPS + JWT
-           ▼                                   ▼
-┌──────────────────────────────────────────────────────────────┐
-│          Nginx (SSL via Certbot/Let's Encrypt)               │
-│          + Fail2ban (protecao contra brute-force)            │
-│          Porta 443 — Reverse Proxy                           │
-└──────┬────────────────────┬────────────────────┬─────────────┘
-       │ /mcp               │ /api/*             │ /
-       ▼                    ▼                    ▼
-┌────────────┐       ┌────────────┐       ┌────────────┐
-│ MCP Server │       │  API REST  │       │  Frontend  │
-│  (FastMCP) │       │ (FastAPI)  │       │  (React)   │
-│ 127.0.0.1  │       │ 127.0.0.1  │       │ 127.0.0.1  │
-│   :8001    │       │   :3000    │       │   :8080    │
-└─────┬──────┘       └──────┬─────┘       └────────────┘
-      │                     │
-      └──────────┬──────────┘
-                 ▼
-      ┌──────────────────────┐       ┌──────────────────────┐
-      │   SQLite (WAL)       │       │  OTel Collector       │
-      │  /data/otrs-mcp.db   │       │  → Tempo / Mimir      │
-      └──────────┬───────────┘       └───────────────────────┘
-                 ▼
-      ┌──────────────────────┐
-      │   Servidor OTRS      │
-      │ (Generic Interface)  │
-      └──────────────────────┘
+┌────────────────────────┐      ┌────────────────────────┐
+│  Agente IA / cliente   │      │  Navegador (admin)     │
+│  MCP                   │      │                        │
+└───────────┬────────────┘      └───────────┬────────────┘
+            │ Bearer sk-otrs-...            │ Bearer JWT
+            ▼                               ▼
+┌──────────────────────────────────────────────────────────┐
+│        Nginx no host (nginx/mcp.conf) + Certbot          │
+│  /otrs/mcp → 8001   /otrs/api/ → 3000   /otrs/ → SPA     │
+└──────┬──────────────────┬──────────────────┬─────────────┘
+       ▼                  ▼                  ▼
+┌────────────┐     ┌────────────┐     ┌────────────┐
+│ mcp-server │     │    api     │     │  frontend  │
+│  FastMCP   │     │  FastAPI   │     │ React+Nginx│
+│ :8001      │     │ :3000      │     │ :80        │
+└─────┬──────┘     └─────┬──────┘     └────────────┘
+      │                  │
+      │                  ▼
+      │        ┌──────────────────────┐
+      │        │ SQLite (WAL)         │
+      │        │ /data/otrs-mcp.db    │
+      │        │ admin_users,api_keys,│
+      │        │ api_usage,login_audit│
+      │        └──────────────────────┘
+      ▼                  ▼
+┌──────────────────────────────────┐   ┌─────────────────────┐
+│   Servidor OTRS                  │   │  otel-collector     │
+│   (Generic Interface)            │   │  → Tempo / Mimir    │
+└──────────────────────────────────┘   └─────────────────────┘
 ```
 
-### Servicos Docker
+### Serviços do Docker Compose
 
-| Servico | Tecnologia | Porta | CPU/Mem | Descricao |
-|---|---|---|---|---|
-| `api` | Python / FastAPI | 127.0.0.1:3000 | 1 CPU / 512M | Backend REST + auth + SQLite |
-| `mcp-server` | Python / FastMCP | 127.0.0.1:8001 | 1 CPU / 512M | MCP Streamable HTTP |
-| `frontend` | React / Nginx Alpine | 127.0.0.1:8080 | 0.5 CPU / 128M | Dashboard administrativo (SPA) |
-| `otel-collector` | OTel Contrib | 127.0.0.1:4317-4318 | 0.5 CPU / 256M | Coleta traces e envia para Tempo/Mimir |
+| Serviço | Imagem / build | Porta publicada | Limites |
+|---|---|---|---|
+| `api` | `Dockerfile.api` (python:3.12.8-slim) | `127.0.0.1:3000` | 1 CPU / 512M |
+| `mcp-server` | `Dockerfile` (python:3.12.8-slim) | `127.0.0.1:8001` | 1 CPU / 512M |
+| `frontend` | `frontend/Dockerfile` (build Vite + Nginx) | `127.0.0.1:8081` | 0.5 CPU / 128M |
+| `otel-collector` | `otel/opentelemetry-collector-contrib:0.108.0` | `127.0.0.1:4317` e `:4318` | 0.5 CPU / 256M |
 
----
-
-## Funcionalidades
-
-### MCP Server
-- Criar, buscar, visualizar e atualizar tickets no OTRS
-- Acessar historico completo de tickets
-- Transporte Streamable HTTP (remoto) e stdio (local)
-- Retry automatico com backoff exponencial (3 tentativas)
-- Gerenciamento automatico de sessoes OTRS com asyncio.Lock
-
-### Seguranca
-- Autenticacao por API key (`sk-otrs-...`) com SHA-256 hashing
-- Autenticacao JWT (HS256, claims iat/jti/exp) para painel administrativo
-- Token refresh automatico (renova 10 min antes de expirar)
-- Rate limiting por API key (configuravel por token)
-- Protecao brute-force no login (5 falhas em 15min = lockout, persistido no SQLite)
-- Fail2ban no Nginx (bloqueia IPs com muitas falhas via iptables)
-- Security headers (CSP, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy)
-- CORS restrito (allow_headers limitado a Authorization + Content-Type)
-- Validacao de entrada centralizada (ticket_id regex, Pydantic com min/max em todos os campos)
-- Erros OTRS sanitizados (detalhes internos nao expostos ao cliente)
-- HTTPS via Nginx + Certbot (Let's Encrypt)
-- Containers Docker non-root, imagens pinadas, portas 127.0.0.1 only
-- Limites de CPU/memoria por container
-
-### Painel Administrativo
-- Dashboard com graficos de atividade (barras por dia, ultimos 14 dias)
-- Distribuicao de uso por tool e ranking de top agents
-- Metricas: success rate, chamadas 24h, tokens ativos, logins falhados
-- Alertas de seguranca (logins falhados, tokens expirando, tokens expirados, tokens nunca usados)
-- Gerenciamento de API keys (criar, revogar, filtros, rate limit, indicadores de expiracao)
-- Gerenciamento de usuarios administradores (com confirmacao de exclusao)
-- Audit Log completo (todas as operacoes de ticket registram agent + api_key, filtros, export CSV/JSON)
-- Login Audit (tentativas de login com IP, user agent, export CSV/JSON)
-- Client MCP Wizard (configuracoes prontas para Claude Desktop, VS Code, Python, cURL)
-- Pagina de configuracoes e status de conexao OTRS
-
-### Observabilidade
-- Auto-instrumentacao Python zero-code (FastAPI, httpx, SQLite3, logging) via `opentelemetry-instrument`
-- Instrumentacao frontend (fetch, document load) via `@opentelemetry/sdk-trace-web`
-- OTel Collector sidecar no Docker Compose para enviar traces para Tempo/Mimir
-- Ativavel/desativavel via variaveis de ambiente (sem overhead quando desabilitado)
-
-### Infraestrutura de Producao
-- Systemd service (boot automatico, restart on failure)
-- Script de deploy (git pull + build + healthcheck + limpeza de imagens)
-- Backup automatico do SQLite (diario, 7 dias de retencao, compressao gzip)
-- Log rotation para Docker
-- Health check externo com webhook de alerta (Slack/Discord/Teams)
-- Suporte a subpath para dominio compartilhado entre multiplos MCPs
+Todas as portas ficam em `127.0.0.1`. A exposição pública é feita pelo Nginx do host.
 
 ---
 
-## Pre-requisitos
+## Pré-requisitos
 
-- **Docker** e **Docker Compose** instalados no servidor
-- **Nginx** instalado no servidor host (para reverse proxy HTTPS)
-- **Certbot** instalado (para certificado SSL Let's Encrypt)
-- **Dominio** apontando para o IP do servidor (registro A no DNS)
-- Servidor OTRS com **Generic Interface** configurada
+- Docker e Docker Compose
+- Servidor OTRS com **Generic Interface** habilitada
+- Para produção: Nginx e Certbot no host, domínio apontando para o servidor
 
-### Configuracao do OTRS
+### Configurar o webservice no OTRS
 
-1. Acesse **Administracao -> Web Services** no OTRS
-2. Crie/verifique um webservice com estas operacoes:
-   - `SessionCreate`, `TicketCreate`, `TicketGet`, `TicketSearch`, `TicketUpdate`, `TicketHistoryGet`
+1. Vá em **Administração → Web Services**
+2. Crie ou edite um webservice expondo: `SessionCreate`, `TicketCreate`, `TicketGet`, `TicketSearch`, `TicketUpdate`, `TicketHistoryGet`
 3. Anote a URL: `https://seu-otrs/otrs/nph-genericinterface.pl/Webservice/NomeDoWebservice`
-4. Garanta que o usuario tem permissoes para tickets e Generic Interface
+4. Garanta que o usuário configurado tem permissão nas filas usadas
 
 ---
 
-## Deploy
-
-### 1. Clonar e configurar
+## Início rápido
 
 ```bash
 git clone https://github.com/eduardoantoniojunior/otrs-mcp-server.git
@@ -158,369 +118,108 @@ cd otrs-mcp-server
 cp .env.example .env
 ```
 
-Edite o `.env`:
+Preencha o mínimo no `.env`:
 
 ```env
-# OTRS (obrigatorio)
 OTRS_BASE_URL=https://seu-otrs/otrs/nph-genericinterface.pl/Webservice/MCPConnector
 OTRS_USERNAME=seu-usuario
 OTRS_PASSWORD=sua-senha
 
-# Seguranca (obrigatorio em producao)
-OTRS_ENV=production
-OTRS_JWT_SECRET=gere-com-python-c-import-secrets-print-secrets-token-hex-32
 OTRS_ADMIN_USER=admin
-OTRS_ADMIN_PASSWORD=MUDE_ESTA_SENHA
-
-# CORS (ajuste para seu dominio)
-OTRS_CORS_ORIGINS=https://seu-dominio
+OTRS_ADMIN_PASSWORD=escolha-uma-senha-forte
+OTRS_JWT_SECRET=<saída de: python -c "import secrets; print(secrets.token_hex(32))">
 ```
 
-### 2. Subir os containers
+Suba os containers:
 
 ```bash
 docker compose up -d --build
-```
-
-Verifique:
-
-```bash
 docker compose ps
-curl -s http://127.0.0.1:3000/api/health
-curl -s http://127.0.0.1:8080 | head -5
+curl -s http://127.0.0.1:3000/api/health   # {"status":"ok"}
 ```
 
-### 3. Configurar Nginx (HTTPS)
+O usuário admin é criado no primeiro start, somente se ainda não existir nenhum e `OTRS_ADMIN_PASSWORD` estiver definido. Acesse o painel em `http://127.0.0.1:8081` (ou pela URL pública do Nginx), faça login e crie sua primeira API key.
 
-Edite `nginx/mcp.conf` e substitua `SEU_DOMINIO` pelo seu dominio real. Depois:
+### Rodar sem Docker
 
 ```bash
-sudo cp nginx/mcp.conf /etc/nginx/sites-available/mcp.conf
-sudo ln -s /etc/nginx/sites-available/mcp.conf /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-sudo certbot --nginx -d seu-dominio
+uv sync --extra dev
+
+# API REST em :3000
+uv run uvicorn otrs_mcp.api:app --port 3000 --reload
+
+# MCP em HTTP na :8001
+$env:OTRS_MCP_TRANSPORT="http"; uv run python -m otrs_mcp.main
+
+# Frontend em :5173
+cd frontend; npm ci; npm run dev
 ```
-
-### 4. Verificar
-
-```bash
-curl https://seu-dominio/api/health
-```
-
-### URLs de acesso
-
-| Servico | URL |
-|---|---|
-| Painel Administrativo | `https://seu-dominio` |
-| API REST | `https://seu-dominio/api` |
-| MCP Endpoint | `https://seu-dominio/mcp` |
 
 ---
 
-## Deploy com Subpath
+## Como usar o MCP
 
-Quando varios MCPs compartilham o mesmo dominio, cada um pode ficar num subpath diferente.
+O servidor fala dois transportes, definidos por `OTRS_MCP_TRANSPORT`:
 
-Exemplo: `https://mcp.dominio.com/otrs/`
+- `stdio` (padrão) — o cliente sobe o processo local e conversa por pipe. Não precisa de rede nem de API key.
+- `http` — Streamable HTTP em `/mcp`, para agentes remotos. **Exige API key válida em toda requisição.**
 
-### Como ativar
+### Autenticação no transporte HTTP
 
-1. No `.env`, defina o subpath:
-
-```env
-VITE_BASE_PATH=/otrs/
-```
-
-2. Rebuild o frontend (o subpath e aplicado no build):
-
-```bash
-docker compose build frontend
-docker compose up -d
-```
-
-3. No `nginx/mcp.conf`:
-   - Comente todo o **MODO 1** (dominio dedicado)
-   - Descomente todo o **MODO 2** (subpath)
-   - Substitua `/otrs` pelo subpath desejado
-
-4. Recarregue o Nginx:
-
-```bash
-sudo cp nginx/mcp.conf /etc/nginx/sites-available/mcp.conf
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-### URLs com subpath
-
-| Servico | URL |
-|---|---|
-| Painel Administrativo | `https://mcp.dominio.com/otrs/` |
-| API REST | `https://mcp.dominio.com/otrs/api/` |
-| MCP Endpoint | `https://mcp.dominio.com/otrs/mcp` |
-
-### Como desativar (voltar para dominio dedicado)
-
-1. Remova `VITE_BASE_PATH` do `.env` (ou defina como `/`)
-2. Rebuild: `docker compose build frontend && docker compose up -d`
-3. No `nginx/mcp.conf`, comente MODO 2 e descomente MODO 1
-
----
-
-## Producao
-
-### 5. Instalar como servico systemd
-
-```bash
-sudo cp deploy/otrs-mcp.service /etc/systemd/system/otrs-mcp.service
-sudo systemctl daemon-reload
-sudo systemctl enable otrs-mcp
-sudo systemctl start otrs-mcp
-```
-
-Comandos:
-
-```bash
-sudo systemctl status otrs-mcp              # Status
-sudo systemctl restart otrs-mcp             # Restart
-sudo journalctl -u otrs-mcp -f              # Logs tempo real
-sudo journalctl -u otrs-mcp --since "1h"    # Logs recentes
-```
-
-### 6. Configurar Fail2ban
-
-```bash
-sudo apt install fail2ban
-sudo cp deploy/fail2ban/jail.local /etc/fail2ban/jail.local
-sudo cp deploy/fail2ban/filter.d/* /etc/fail2ban/filter.d/
-sudo systemctl restart fail2ban
-sudo systemctl enable fail2ban
-```
-
-Jails configuradas:
-
-| Jail | Trigger | Ban |
-|------|---------|-----|
-| `otrs-mcp-login` | 5 falhas de login em 5 min | 15 min |
-| `otrs-mcp-api` | 20 erros 401/403 em 1 min | 10 min |
-| `nginx-botsearch` | 10 scans (wp-admin, .env, .git) em 5 min | 1 hora |
-
-Verificar:
-
-```bash
-sudo fail2ban-client status                           # Listar jails
-sudo fail2ban-client status otrs-mcp-login            # IPs banidos
-sudo fail2ban-client set otrs-mcp-login unbanip 1.2.3.4  # Desbanir
-```
-
-### 7. Configurar backup automatico
-
-```bash
-chmod +x deploy/deploy.sh deploy/backup.sh deploy/healthcheck.sh
-
-# Backup diario as 3h
-(crontab -l 2>/dev/null; echo "0 3 * * * /opt/otrs-mcp-server/deploy/backup.sh >> /var/log/otrs-mcp-backup.log 2>&1") | crontab -
-
-# Health check a cada 5 minutos
-(crontab -l 2>/dev/null; echo "*/5 * * * * /opt/otrs-mcp-server/deploy/healthcheck.sh") | crontab -
-```
-
-Backup: SQLite consistente via `sqlite3.backup()`, compressao gzip, retencao 7 dias.
-
-### 8. Configurar log rotation
-
-```bash
-sudo cp deploy/otrs-mcp.logrotate /etc/logrotate.d/otrs-mcp
-```
-
-Ou globalmente no Docker (`/etc/docker/daemon.json`):
+Requisições sem `Authorization: Bearer sk-otrs-...` são recusadas com `401` antes de qualquer tool executar:
 
 ```json
-{
-  "log-driver": "json-file",
-  "log-opts": { "max-size": "10m", "max-file": "3" }
-}
+{"error": "invalid_token", "error_description": "Authentication required"}
 ```
 
-### 9. Health check com alertas (opcional)
+São recusadas as keys inexistentes, revogadas (`active = 0`) e vencidas (`expires_at` no passado). A validação usa a mesma tabela `api_keys` da API REST, e as permissões da key viram escopos:
 
-Configure `HEALTHCHECK_WEBHOOK_URL` no `.env` para receber alertas via webhook quando um servico cair:
-
-```env
-HEALTHCHECK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
-```
-
-O script `deploy/healthcheck.sh` verifica API, MCP e Frontend a cada 5 min, envia alerta na primeira falha e notifica recuperacao.
-
-### Script de deploy
-
-Para atualizacoes futuras:
-
-```bash
-./deploy/deploy.sh --pull    # Git pull + build + restart + healthcheck
-./deploy/deploy.sh           # Apenas rebuild + restart
-```
-
----
-
-## Configuracao
-
-### Variaveis de Ambiente
-
-#### OTRS (obrigatorio)
-
-| Variavel | Descricao |
+| Permissão da key | Tools liberadas |
 |---|---|
-| `OTRS_BASE_URL` | URL completa do webservice OTRS |
-| `OTRS_USERNAME` | Usuario do OTRS |
-| `OTRS_PASSWORD` | Senha do OTRS |
+| `read` | `get_ticket`, `search_tickets`, `get_ticket_history` e os resources |
+| `write` | `create_ticket`, `update_ticket` |
+| `admin` | todas |
 
-#### OTRS (opcional)
+Uma key só de leitura que tente escrever recebe erro na tool, não na conexão:
 
-| Variavel | Padrao | Descricao |
-|---|---|---|
-| `OTRS_VERIFY_SSL` | `true` | Verificar certificados SSL |
-| `OTRS_TIMEOUT` | `30` | Timeout HTTP em segundos |
-| `OTRS_DEBUG` | `false` | Logging de debug |
-| `OTRS_DEFAULT_QUEUE` | `Raw` | Fila padrao para tickets |
-| `OTRS_DEFAULT_STATE` | `new` | Estado padrao |
-| `OTRS_DEFAULT_PRIORITY` | `3 normal` | Prioridade padrao |
-| `OTRS_DEFAULT_TYPE` | `` | Tipo padrao |
-| `OTRS_WEB_BASE_URL` | (derivado) | URL da interface web OTRS |
-| `OTRS_VALID_QUEUES` | `` | Filas validas (dropdown no painel, separadas por virgula) |
-| `OTRS_VALID_TYPES` | `` | Tipos validos (dropdown no painel, separados por virgula) |
+```
+Permissao 'write' necessaria. A API key possui: read
+```
 
-#### Autenticacao
-
-| Variavel | Padrao | Descricao |
-|---|---|---|
-| `OTRS_ENV` | `development` | Ambiente (`production` exige JWT_SECRET) |
-| `OTRS_JWT_SECRET` | (gerado) | Secret para assinatura JWT (min 32 chars) |
-| `OTRS_JWT_EXPIRE_MINUTES` | `480` | Tempo de vida do JWT (8 horas) |
-| `OTRS_ADMIN_USER` | `admin` | Usuario admin padrao |
-| `OTRS_ADMIN_PASSWORD` | -- | Senha do admin padrao (**obrigatorio**) |
-
-#### MCP Server
-
-| Variavel | Padrao | Descricao |
-|---|---|---|
-| `OTRS_MCP_TRANSPORT` | `stdio` | Transporte: `stdio` ou `http` |
-| `OTRS_MCP_HOST` | `0.0.0.0` | Host do MCP server (modo http) |
-| `OTRS_MCP_PORT` | `8001` | Porta do MCP server (modo http) |
-
-#### Banco de Dados
-
-| Variavel | Padrao | Descricao |
-|---|---|---|
-| `OTRS_DB_PATH` | `/data/otrs-mcp.db` | Caminho do SQLite |
-| `OTRS_ACTIVITY_FILE` | `/data/activity.json` | Log de atividade MCP |
-| `OTRS_ACTIVITY_MAX_EVENTS` | `1000` | Maximo de eventos no JSON |
-
-#### CORS
-
-| Variavel | Padrao | Descricao |
-|---|---|---|
-| `OTRS_CORS_ORIGINS` | `http://localhost:5173,...` | Origens permitidas (separadas por virgula) |
-
-#### Frontend
-
-| Variavel | Padrao | Descricao |
-|---|---|---|
-| `VITE_BASE_PATH` | `/` | Subpath do deploy (ex: `/otrs/` para dominio compartilhado) |
-
-#### OpenTelemetry (opcional)
-
-| Variavel | Padrao | Descricao |
-|---|---|---|
-| `OTEL_TEMPO_ENDPOINT` | -- | URL OTLP HTTP do Tempo/Mimir (ex: `http://172.31.x.x:4318`) |
-| `VITE_OTEL_ENDPOINT` | -- | URL publica do collector para browser traces (ex: `https://seu-dominio/otel`) |
-
-### API Keys
-
-API keys autenticam agentes externos (Claude Desktop, bou-vigilante, scripts).
-
-**Criar via painel:**
-1. Login em `https://seu-dominio`
-2. Ir em **MCP Tokens**
-3. Clicar em **Create Token**
-4. Definir nome, agent, permissoes (`read`/`write`), rate limit e expiracao
-5. Copiar a chave gerada (exibida apenas uma vez)
-
-**Formato:** `sk-otrs-{64 caracteres hex}`
-
-**Rate Limit:** Configuravel por token (requests/minuto). Use `0` para ilimitado (recomendado para agentes automatizados).
-
----
-
-## Uso do MCP Server
-
-### Claude Desktop (Streamable HTTP remoto)
+### Claude Desktop / Kiro — remoto (HTTP)
 
 ```json
 {
   "mcpServers": {
     "otrs": {
-      "url": "https://seu-dominio/mcp",
+      "url": "https://seu-dominio/otrs/mcp",
       "headers": {
-        "Authorization": "Bearer sk-otrs-sua-api-key-aqui"
+        "Authorization": "Bearer sk-otrs-sua-api-key"
       }
     }
   }
 }
 ```
 
-Se usando subpath:
+O path `/otrs/mcp` corresponde ao `nginx/mcp.conf` deste repositório. Em domínio dedicado, use `https://seu-dominio/mcp`.
 
-```json
-{
-  "mcpServers": {
-    "otrs": {
-      "url": "https://mcp.dominio.com/otrs/mcp",
-      "headers": {
-        "Authorization": "Bearer sk-otrs-sua-api-key-aqui"
-      }
-    }
-  }
-}
-```
-
-### VS Code / Kiro
+### VS Code
 
 ```json
 {
   "servers": {
     "otrs": {
       "type": "http",
-      "url": "https://seu-dominio/mcp",
+      "url": "https://seu-dominio/otrs/mcp",
       "headers": {
-        "Authorization": "Bearer sk-otrs-sua-api-key-aqui"
+        "Authorization": "Bearer sk-otrs-sua-api-key"
       }
     }
   }
 }
 ```
 
-### Python SDK
-
-```python
-from mcp.client.streamable_http import streamablehttp_client
-from mcp.client.session import ClientSession
-
-async def main():
-    headers = {"Authorization": "Bearer sk-otrs-sua-api-key"}
-    async with streamablehttp_client(
-        "https://seu-dominio/mcp", headers=headers
-    ) as (r, w, _):
-        async with ClientSession(r, w) as session:
-            await session.initialize()
-            tools = await session.list_tools()
-            result = await session.call_tool(
-                "search_tickets",
-                arguments={"state": "new", "limit": 5}
-            )
-```
-
-### stdio (local, sem rede)
+### Local via stdio
 
 ```json
 {
@@ -540,337 +239,475 @@ async def main():
 }
 ```
 
+### Python SDK
+
+```python
+import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+
+async def main() -> None:
+    headers = {"Authorization": "Bearer sk-otrs-sua-api-key"}
+    async with streamablehttp_client(
+        "https://seu-dominio/otrs/mcp", headers=headers
+    ) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            tools = await session.list_tools()
+            print([t.name for t in tools.tools])
+
+            result = await session.call_tool(
+                "search_tickets",
+                arguments={"state": "new", "limit": 5},
+            )
+            print(result)
+
+
+asyncio.run(main())
+```
+
+### Exemplos de pedidos ao agente
+
+Com o MCP conectado, o modelo resolve pedidos em linguagem natural:
+
+- "Abra um ticket na fila Suporte com prioridade 4 high sobre a impressora do 3º andar"
+- "Quais tickets estão em aberto na fila Infraestrutura?"
+- "Mostre o histórico do ticket 4821"
+- "Mude o ticket 4821 para closed successful"
+
+Toda resposta de ticket inclui `WebURL` (e `HistoryWebURL`, quando aplicável) apontando para a interface web do OTRS, o que dá ao agente um link clicável para devolver ao usuário.
+
 ---
 
-## Referencia da API REST
+## Tools MCP
 
-### Autenticacao
+| Tool | Parâmetros | Observações |
+|---|---|---|
+| `create_ticket` | `title`, `body`, `queue?`, `priority?`, `state?`, `customer_user?`, `ticket_type?` | Aplica os defaults de `OTRS_DEFAULT_*`; valida prioridade |
+| `get_ticket` | `ticket_id`, `include_dynamic_fields?`, `include_extended_data?` | `ticket_id` precisa ser numérico |
+| `search_tickets` | `customer_user?`, `customer_id?`, `queue?`, `state?`, `priority?`, `title?`, `limit?`, `sort_by?`, `order_by?` | `title` aceita `*` como curinga (convertido para `%`) |
+| `update_ticket` | `ticket_id`, `title?`, `queue?`, `priority?`, `state?`, `customer_user?`, `owner?` | Envia só os campos preenchidos |
+| `get_ticket_history` | `ticket_id` | — |
 
-Todos os endpoints (exceto `/api/health`) requerem:
+Prioridades aceitas (`src/otrs_mcp/constants.py`): `1 very low`, `2 low`, `3 normal`, `4 high`, `5 very high`.
+
+Cada chamada é registrada em `activity.json` com tool, status, duração e `ticket_id`. Campos chamados `password` são removidos antes de gravar.
+
+---
+
+## Resources MCP
+
+| URI | Conteúdo |
+|---|---|
+| `otrs://ticket/{ticket_id}` | Ticket completo em JSON |
+| `otrs://ticket/{ticket_id}/history` | Histórico do ticket |
+| `otrs://search/tickets` | Os 20 tickets mais recentes |
+
+---
+
+## API REST
+
+Base: `https://seu-dominio/otrs/api` (ou `http://127.0.0.1:3000/api` local).
+
+Autenticação por header, exceto no health check:
 
 ```
 Authorization: Bearer <api-key-ou-jwt>
 ```
 
-- Endpoints de tickets: API key ou JWT
-- Endpoints admin (`/api/admin/*`): apenas JWT
+### Público
 
-### Endpoints
-
-#### Publico
-
-| Metodo | Rota | Descricao |
+| Método | Rota | Descrição |
 |---|---|---|
 | `GET` | `/api/health` | Health check |
 
-#### Tickets (API key ou JWT)
+### Tickets — API key ou JWT
 
-| Metodo | Rota | Permissao | Descricao |
-|---|---|---|---|
-| `GET` | `/api/tickets` | read | Buscar tickets (filtros: queue, state, priority, title, customer_user, customer_id) |
-| `GET` | `/api/tickets/{id}` | read | Detalhes do ticket |
-| `POST` | `/api/tickets` | write | Criar ticket |
-| `PUT` | `/api/tickets/{id}` | write | Atualizar ticket |
-| `GET` | `/api/tickets/{id}/history` | read | Historico do ticket |
-
-#### Atividade (API key ou JWT)
-
-| Metodo | Rota | Permissao | Descricao |
-|---|---|---|---|
-| `GET` | `/api/activity` | read | Log de atividade |
-| `GET` | `/api/activity/summary` | read | Resumo de metricas |
-| `DELETE` | `/api/activity` | write | Limpar atividade |
-
-#### Configuracao (API key ou JWT)
-
-| Metodo | Rota | Descricao |
+| Método | Rota | Permissão |
 |---|---|---|
-| `GET` | `/api/config` | Filas e tipos validos |
+| `GET` | `/api/tickets` | `read` |
+| `GET` | `/api/tickets/{id}` | `read` |
+| `POST` | `/api/tickets` | `write` |
+| `PUT` | `/api/tickets/{id}` | `write` |
+| `GET` | `/api/tickets/{id}/history` | `read` |
+| `GET` | `/api/config` | autenticado |
 
-#### Administracao (apenas JWT)
+Filtros de `GET /api/tickets`: `customer_user`, `customer_id`, `queue`, `state`, `priority`, `title`, `limit` (1–200), `sort_by`, `order_by`.
 
-| Metodo | Rota | Descricao |
+### Atividade — API key ou JWT
+
+| Método | Rota | Permissão |
 |---|---|---|
-| `POST` | `/api/admin/login` | Login (retorna JWT) |
-| `POST` | `/api/admin/refresh` | Renovar JWT (token refresh) |
-| `GET` | `/api/admin/me` | Dados do admin logado |
-| `POST` | `/api/admin/users` | Criar admin |
-| `GET` | `/api/admin/users` | Listar admins |
-| `DELETE` | `/api/admin/users/{id}` | Remover admin |
-| `POST` | `/api/admin/keys` | Criar API key |
-| `GET` | `/api/admin/keys` | Listar API keys |
-| `PATCH` | `/api/admin/keys/{id}/revoke` | Revogar key |
+| `GET` | `/api/activity` | autenticado |
+| `GET` | `/api/activity/summary` | autenticado |
+| `DELETE` | `/api/activity` | `write` |
+
+### Administração — somente JWT
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `POST` | `/api/admin/login` | Login, devolve JWT |
+| `POST` | `/api/admin/refresh` | Renova o JWT sem pedir senha |
+| `GET` | `/api/admin/me` | Admin autenticado |
+| `POST` `GET` `DELETE` | `/api/admin/users[/{id}]` | CRUD de administradores |
+| `POST` `GET` | `/api/admin/keys` | Criar e listar API keys |
+| `PATCH` | `/api/admin/keys/{id}/revoke` | Desativar key |
 | `DELETE` | `/api/admin/keys/{id}` | Remover key |
-| `GET` | `/api/admin/activity` | Atividade detalhada dos agentes |
-| `GET` | `/api/admin/login-audit` | Log de tentativas de login |
-| `GET` | `/api/admin/metrics/daily` | Metricas diarias (graficos dashboard) |
+| `GET` | `/api/admin/activity` | Auditoria de uso (SQLite) |
+| `GET` | `/api/admin/login-audit` | Tentativas de login |
+| `GET` | `/api/admin/metrics/daily` | Métricas por dia (`days`, 1–90) |
 
----
-
-## Referencia das Tools MCP
-
-| Tool | Descricao | Parametros |
-|---|---|---|
-| `create_ticket` | Criar ticket | `title`, `body`, `queue?`, `priority?`, `state?`, `customer_user?`, `ticket_type?` |
-| `get_ticket` | Detalhes do ticket | `ticket_id`, `include_dynamic_fields?`, `include_extended_data?` |
-| `search_tickets` | Buscar tickets | `customer_user?`, `customer_id?`, `queue?`, `state?`, `priority?`, `title?`, `limit?`, `sort_by?`, `order_by?` |
-| `update_ticket` | Atualizar ticket | `ticket_id`, `title?`, `queue?`, `priority?`, `state?`, `customer_user?`, `owner?` |
-| `get_ticket_history` | Historico | `ticket_id` |
-
----
-
-## Referencia dos Resources MCP
-
-| URI | Descricao |
-|---|---|
-| `otrs://ticket/{ticket_id}` | Dados do ticket em JSON |
-| `otrs://ticket/{ticket_id}/history` | Historico do ticket |
-| `otrs://search/tickets` | 20 tickets mais recentes |
-
----
-
-## Painel Administrativo
-
-| Pagina | Funcionalidade |
-|---|---|
-| **Dashboard** | Graficos de atividade (barras 14 dias), distribuicao por tool, ranking top agents, metricas 24h, success rate, alertas de seguranca |
-| **MCP Tokens** | CRUD de API keys com filtros (busca, permissao, status), rate limit, indicadores de expiracao/never used, confirmacao detalhada |
-| **Admin Users** | Gerenciamento de administradores com confirmacao de exclusao |
-| **Client MCP Wizard** | Configuracoes prontas para Claude Desktop, VS Code, cURL, Python SDK |
-| **Audit Log** | Log completo de todas as operacoes (agent, api_key, ticket_id, duracao), filtros e export CSV/JSON |
-| **Login Audit** | Tentativas de login (sucesso/falha, IP, user agent), stats, export CSV/JSON |
-| **Settings** | Status de conexao OTRS, filas e tipos configurados, versao do servidor |
-
----
-
-## Seguranca
-
-### Camadas de protecao
-
-| Camada | Implementacao |
-|---|---|
-| **Rede** | Portas Docker em 127.0.0.1 only, Nginx com HTTPS (Certbot), `/mcp` exige Authorization header |
-| **Firewall** | Fail2ban com 3 jails: login brute-force, API abuse, bot/scanner detection |
-| **Autenticacao** | JWT (HS256 + iat/jti) para admin, API keys (SHA-256) para agentes, dual auth nos endpoints |
-| **Brute-force** | 5 falhas em 15min = lockout por IP e username, persistido no SQLite |
-| **Rate limiting** | Por API key, configuravel (requests/minuto) |
-| **Headers HTTP** | CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy |
-| **CORS** | Origins configuravel, allow_headers restrito a Authorization + Content-Type |
-| **Validacao** | ticket_id regex centralizado, Pydantic com min/max em todos os campos, erros OTRS sanitizados |
-| **Docker** | Non-root (user otrs), multi-stage build, imagens pinadas (python:3.12.8, nginx:1.27, uv:0.5) |
-| **Recursos** | Limites CPU/memoria por container, request body size limit (1MB no Nginx) |
-| **Auditoria** | Todas as operacoes de ticket registram agent + api_key no SQLite, login audit com IP e user agent |
-| **Frontend** | JWT expirado validado no bootstrap, token refresh automatico, ErrorBoundary, cache limpo no logout, AbortController timeout |
-
----
-
-## Observabilidade (OpenTelemetry)
-
-O projeto inclui instrumentacao completa via OpenTelemetry para traces e metricas.
-
-### Arquitetura
-
-```
-Backend (api/mcp) ──[gRPC:4317]──→ OTel Collector ──[OTLP HTTP]──→ Tempo/Mimir
-Frontend (browser) ──[HTTP:4318]──→ OTel Collector ──[OTLP HTTP]──→ Tempo/Mimir
-```
-
-### O que e instrumentado
-
-| Componente | Instrumentacao | Tipo |
-|---|---|---|
-| **API REST** | FastAPI, httpx, SQLite3, logging | Zero-code (`opentelemetry-instrument`) |
-| **MCP Server** | httpx, logging | Zero-code (`opentelemetry-instrument`) |
-| **Frontend** | fetch (API calls), document load | SDK (`@opentelemetry/sdk-trace-web`) |
-
-### Habilitar
-
-1. No `.env`, defina o endpoint do seu Tempo:
-
-```env
-OTEL_TEMPO_ENDPOINT=http://172.31.x.x:4318
-VITE_OTEL_ENDPOINT=https://seu-dominio/otel
-```
-
-2. Rebuild e restart:
+### Exemplo com cURL
 
 ```bash
-docker compose down
+KEY="sk-otrs-sua-api-key"
+BASE="https://seu-dominio/otrs/api"
+
+# Buscar tickets novos
+curl -s -H "Authorization: Bearer $KEY" "$BASE/tickets?state=new&limit=5"
+
+# Criar ticket
+curl -s -X POST "$BASE/tickets" \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Impressora sem toner","body":"3o andar, sala 12","queue":"Suporte","priority":"3 normal"}'
+
+# Fechar ticket
+curl -s -X PUT "$BASE/tickets/4821" \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"state":"closed successful"}'
+```
+
+### Códigos de erro
+
+| Código | Significado |
+|---|---|
+| `401` | Token ausente, inválido, expirado ou key revogada |
+| `403` | Permissão insuficiente para a operação |
+| `404` | Ticket não encontrado |
+| `422` | Validação falhou (`ticket_id` não numérico, prioridade inválida) |
+| `429` | Rate limit da API key, ou lockout de login |
+| `502` | Erro na comunicação com o OTRS |
+| `503` | OTRS indisponível ou API ainda inicializando |
+
+---
+
+## Configuração
+
+Todas as variáveis usam o prefixo `OTRS_` e são lidas do ambiente (`pydantic-settings`).
+
+### OTRS — obrigatórias
+
+| Variável | Descrição |
+|---|---|
+| `OTRS_BASE_URL` | URL completa do webservice |
+| `OTRS_USERNAME` | Usuário do OTRS |
+| `OTRS_PASSWORD` | Senha do OTRS |
+
+Faltando qualquer uma, o processo falha no start com `OTRSValidationError`.
+
+### OTRS — opcionais
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `OTRS_VERIFY_SSL` | `true` | Verificação de certificado |
+| `OTRS_TIMEOUT` | `30` | Timeout HTTP (s) |
+| `OTRS_DEBUG` | `false` | Log de debug por requisição |
+| `OTRS_DEFAULT_QUEUE` | `Raw` | Fila padrão |
+| `OTRS_DEFAULT_STATE` | `new` | Estado padrão |
+| `OTRS_DEFAULT_PRIORITY` | `3 normal` | Prioridade padrão |
+| `OTRS_DEFAULT_TYPE` | vazio | Tipo padrão (omitido se vazio) |
+| `OTRS_WEB_BASE_URL` | derivado | Base da interface web, usada nos links `WebURL` |
+| `OTRS_VALID_QUEUES` | vazio | Filas do dropdown do painel (separadas por vírgula) |
+| `OTRS_VALID_TYPES` | vazio | Tipos do dropdown do painel |
+
+Quando `OTRS_WEB_BASE_URL` não é informado, ele é derivado de `OTRS_BASE_URL` cortando em `/nph-genericinterface.pl`.
+
+### Autenticação
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `OTRS_ENV` | `development` | Com `production`, `OTRS_JWT_SECRET` passa a ser obrigatório |
+| `OTRS_JWT_SECRET` | gerado | Segredo HS256. Sem ele em dev, um aleatório é gerado e os tokens morrem a cada restart |
+| `OTRS_JWT_EXPIRE_MINUTES` | `480` | Validade do JWT |
+| `OTRS_ADMIN_USER` | `admin` | Admin criado no primeiro start |
+| `OTRS_ADMIN_PASSWORD` | — | Sem isso, nenhum admin é criado automaticamente |
+
+### MCP, banco e CORS
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `OTRS_MCP_TRANSPORT` | `stdio` | `stdio` ou `http`. Com `http`, a API key passa a ser exigida |
+| `OTRS_MCP_HOST` | `0.0.0.0` | Bind do MCP em modo http |
+| `OTRS_MCP_PORT` | `8001` | Porta do MCP em modo http |
+| `OTRS_MCP_ISSUER_URL` | `https://otrs-mcp.local` | Valor de `issuer_url` exigido pelas AuthSettings do SDK; não há OAuth externo |
+| `OTRS_DB_PATH` | `/data/otrs-mcp.db` | Caminho do SQLite |
+| `OTRS_ACTIVITY_FILE` | `/data/activity.json` | Log de atividade do MCP |
+| `OTRS_ACTIVITY_MAX_EVENTS` | `1000` | Eventos mantidos no JSON |
+| `OTRS_CORS_ORIGINS` | `http://localhost:5173,http://localhost:8080` | Origens permitidas |
+
+### Frontend e telemetria
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `VITE_BASE_PATH` | `/` | Subpath do build (ex.: `/otrs/`). Aplicado em build time |
+| `VITE_OTEL_ENDPOINT` | vazio | Collector para traces do browser |
+| `OTEL_TEMPO_ENDPOINT` | vazio | Destino OTLP do collector |
+
+---
+
+## API keys
+
+Formato: `sk-otrs-` seguido de 64 caracteres hex. A chave é exibida **uma única vez**, na criação; o banco guarda apenas o SHA-256 e um prefixo de 12 caracteres para identificação.
+
+Criar pelo painel: **MCP Tokens → Create Token**. Ou via API:
+
+```bash
+curl -s -X POST "$BASE/admin/keys" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Agente Suporte","agent_name":"suporte-bot","permissions":["read","write"],"rate_limit":100,"expires_in_days":90}'
+```
+
+| Campo | Regra |
+|---|---|
+| `permissions` | `read`, `write`, `admin`. `admin` satisfaz qualquer verificação |
+| `rate_limit` | Requisições por minuto, 1–10000 |
+| `expires_in_days` | 1–365, ou omitido para não expirar |
+
+Uma key é rejeitada se não existir, estiver revogada (`active = 0`) ou vencida.
+
+---
+
+## Painel administrativo
+
+React 19 + Vite 6 + TanStack Query 5 + Tailwind.
+
+| Página | Função |
+|---|---|
+| **Dashboard** | Métricas de uso, atividade por dia, distribuição por tool, ranking de agentes |
+| **MCP Tokens** | Criar, revogar e remover API keys; permissões, rate limit, expiração |
+| **Admin Users** | Gerenciar administradores |
+| **Audit Log** | Operações registradas em `api_usage`, com agente, key, ticket e duração |
+| **Login Audit** | Tentativas de login com IP e user agent |
+| **Client MCP Wizard** | Gera a configuração pronta para Claude Desktop, VS Code, Python e cURL |
+| **Settings** | Estado da conexão com o OTRS, filas e tipos configurados |
+
+Também há componentes de ticket (`TicketList`, `TicketDetail`, `TicketForm`) para operar tickets pelo painel.
+
+---
+
+## Segurança
+
+| Camada | Implementação |
+|---|---|
+| **Rede** | Portas dos containers em `127.0.0.1`; exposição via Nginx com TLS (Certbot) |
+| **Senhas** | bcrypt via `passlib` para admins |
+| **API keys** | SHA-256 no banco, valor bruto nunca persistido |
+| **MCP HTTP** | `TokenVerifier` valida a API key em cada requisição; `RequireAuthMiddleware` responde `401` antes de executar tool. Escopo `read`/`write` verificado por tool |
+| **JWT** | HS256 com `sub`, `username`, `exp`, `iat`, `jti`, `type` |
+| **Produção** | `OTRS_ENV=production` sem `OTRS_JWT_SECRET` aborta o start |
+| **Brute-force** | 5 falhas em 15 min por usuário **ou** por IP → `429`, avaliado sobre `login_audit` |
+| **Rate limit** | Janela de 60 s por API key sobre `api_usage`; `rate_limit` 0 libera |
+| **Permissões** | `require_permission("read"/"write")` em cada rota de ticket |
+| **Headers** | `X-Content-Type-Options`, `X-Frame-Options: DENY`, `X-XSS-Protection`, `Referrer-Policy`, `Cache-Control: no-store`; Nginx adiciona `Permissions-Policy` |
+| **CORS** | Origens por `OTRS_CORS_ORIGINS`, `allow_headers` restrito a `Authorization` e `Content-Type` |
+| **Validação** | `ticket_id` por regex `^\d{1,20}$`, prioridade contra lista fechada, Pydantic com `min_length`/`max_length` |
+| **Sanitização** | Erros do OTRS viram `502 "Erro na comunicacao com o OTRS"`; detalhes só no log |
+| **Sessão OTRS** | `SessionCreate` protegido por `asyncio.Lock`; requisições seguintes enviam apenas `SessionID` |
+| **Auditoria** | Toda operação de ticket grava agente, key, ticket e duração em `api_usage` |
+| **Containers** | Usuário não-root `otrs`, multi-stage, imagens pinadas (`python:3.12.8`, `uv:0.5`), limites de CPU e memória |
+| **Fail2ban** | Jails em `deploy/fail2ban/` para login, abuso de API e varredura de bots |
+
+Segredos ficam apenas em variáveis de ambiente. `record_activity` e `record_tool_call` descartam campos `password` antes de gravar.
+
+---
+
+## Observabilidade
+
+Backend instrumentado sem alteração de código: os Dockerfiles usam `opentelemetry-instrument` como wrapper, com instrumentações de FastAPI, httpx, SQLite3 e logging.
+
+```
+api / mcp-server ──gRPC:4317──▶ otel-collector ──OTLP HTTP──▶ Tempo / Mimir
+browser ─────────HTTP:4318────▶ otel-collector
+```
+
+Para habilitar o envio, defina no `.env`:
+
+```env
+OTEL_TEMPO_ENDPOINT=http://IP-DO-GRAFANA:4318
+VITE_OTEL_ENDPOINT=https://seu-dominio/otrs/otel
+```
+
+Rebuild (`VITE_OTEL_ENDPOINT` entra no build do frontend):
+
+```bash
 docker compose up -d --build
 ```
 
-3. Copiar o nginx atualizado (tem o proxy `/otel/` para o collector):
-
-```bash
-sudo cp nginx/mcp.conf /etc/nginx/sites-available/mcp.conf
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-4. Verificar no Grafana Explore (Tempo):
+Consulta no Grafana Explore (Tempo):
 
 ```
-TraceQL: { resource.service.name = "otrs-mcp-api" }
+{ resource.service.name = "otrs-mcp-api" }
 ```
 
-### Desabilitar
-
-Se `OTEL_TEMPO_ENDPOINT` nao estiver definido, o collector opera sem destino.
-
-Se `VITE_OTEL_ENDPOINT` nao estiver definido, o frontend nao envia traces.
-
-O `opentelemetry-instrument` opera em modo noop quando nao ha exporter configurado (sem overhead).
+Sem `OTEL_EXPORTER_OTLP_ENDPOINT` alcançável, o `opentelemetry-instrument` opera em modo noop. Sem `VITE_OTEL_ENDPOINT`, o frontend não envia traces.
 
 ---
 
-## Estrutura do Projeto
+## Deploy em produção
+
+### Nginx
+
+`nginx/mcp.conf` vem configurado para domínio compartilhado, servindo este projeto sob o subpath `/otrs/`:
+
+| Rota | Destino |
+|---|---|
+| `/otrs/mcp` | `127.0.0.1:8001/mcp` (match exato, sem trailing slash) |
+| `/otrs/api/` | `127.0.0.1:3000/api/` |
+| `/otrs/otel/` | `127.0.0.1:4318/` |
+| `/otrs/` | frontend |
+| `/` | outro serviço em `127.0.0.1:9090` |
+
+Ajuste `server_name` e, se for usar subpath, defina `VITE_BASE_PATH=/otrs/` antes do build do frontend. Depois:
+
+```bash
+sudo cp nginx/mcp.conf /etc/nginx/sites-available/mcp.conf
+sudo ln -s /etc/nginx/sites-available/mcp.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d seu-dominio
+```
+
+> Confira a porta do frontend antes de recarregar: o Compose publica `127.0.0.1:8081`, e o vhost do repositório aponta para `8080`. Veja [Limitações conhecidas](#limitações-conhecidas).
+
+### Systemd, backup e monitoramento
+
+```bash
+sudo cp deploy/otrs-mcp.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now otrs-mcp
+
+chmod +x deploy/deploy.sh deploy/backup.sh deploy/healthcheck.sh
+(crontab -l 2>/dev/null; echo "0 3 * * * /opt/otrs-mcp-server/deploy/backup.sh") | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * /opt/otrs-mcp-server/deploy/healthcheck.sh") | crontab -
+
+sudo cp deploy/otrs-mcp.logrotate /etc/logrotate.d/otrs-mcp
+```
+
+Fail2ban:
+
+```bash
+sudo cp deploy/fail2ban/jail.local /etc/fail2ban/jail.local
+sudo cp deploy/fail2ban/filter.d/* /etc/fail2ban/filter.d/
+sudo systemctl restart fail2ban
+```
+
+Atualizações posteriores: `./deploy/deploy.sh --pull`.
+
+---
+
+## Estrutura do projeto
 
 ```
 otrs-mcp-server/
-├── src/otrs_mcp/                # Pacote Python principal
-│   ├── __init__.py              # API publica (v0.2.0)
-│   ├── main.py                  # Entry point MCP (stdio/http)
-│   ├── config.py                # Configuracao (pydantic-settings)
-│   ├── client.py                # Cliente HTTP OTRS com retry + asyncio.Lock
-│   ├── tools.py                 # 5 Tools MCP com validacao
-│   ├── resources.py             # 3 Resources MCP
-│   ├── api.py                   # Backend REST (FastAPI) com audit trail
-│   ├── auth.py                  # JWT (iat/jti) + API key + rate limiting
-│   ├── database.py              # SQLite WAL (schema + CRUD + metricas diarias)
-│   ├── validation.py            # Validacao centralizada (ticket_id)
-│   ├── activity.py              # Monitoramento de atividade (JSON)
-│   ├── constants.py             # Prioridades e estados validos
-│   ├── exceptions.py            # Excecoes customizadas
-│   └── routes/
-│       └── admin.py             # Login (brute-force SQLite), refresh, keys, users, audit, metrics
-├── frontend/                    # React 19 + TypeScript + TailwindCSS
-│   ├── src/
-│   │   ├── pages/               # Login, ApiKeys, AuditLog, LoginAudit, Settings, ClientWizard
-│   │   ├── components/          # Dashboard (graficos CSS), Layout
-│   │   ├── contexts/            # AuthContext (JWT refresh automatico)
-│   │   ├── hooks/               # useTickets, useHealth, etc.
-│   │   ├── services/api.ts      # HTTP client (timeout, logout centralizado, subpath-aware)
-│   │   ├── telemetry.ts         # OpenTelemetry Web SDK (fetch + document load)
-│   │   └── types/               # TypeScript types
-│   ├── Dockerfile               # Node 20 build + Nginx 1.27 Alpine serve
-│   ├── nginx.conf               # Security headers (CSP, X-Frame-Options, etc.)
-│   ├── vite.config.ts           # Vite config (base path via VITE_BASE_PATH)
-│   └── package.json             # React 19, Vite 6, TanStack Query 5, OTel Web SDK
-├── nginx/
-│   └── mcp.conf                 # Nginx vhost (MODO 1: raiz, MODO 2: subpath comentado)
-├── otel/
-│   └── otel-collector.yaml      # Config OTel Collector (OTLP → Tempo/Mimir)
-├── deploy/
-│   ├── otrs-mcp.service         # Systemd service unit
-│   ├── deploy.sh                # Script deploy (pull + build + healthcheck)
-│   ├── backup.sh                # Backup SQLite (sqlite3.backup, gzip, 7 dias)
-│   ├── healthcheck.sh           # Health check externo com webhook de alerta
-│   ├── otrs-mcp.logrotate       # Log rotation para Docker
-│   └── fail2ban/
-│       ├── jail.local           # Config fail2ban (3 jails)
-│       └── filter.d/
-│           ├── otrs-mcp-login.conf    # Filtro login brute-force
-│           ├── otrs-mcp-api.conf      # Filtro API abuse
-│           └── nginx-botsearch.conf   # Filtro bot/scanner
-├── tests/
-│   ├── unit/                    # 41 testes unitarios (pytest)
-│   └── integration/             # Testes de integracao
-├── docker-compose.yml           # 4 servicos (api, mcp, frontend, otel-collector)
-├── Dockerfile                   # MCP server (python:3.12.8, non-root, OTel zero-code)
-├── Dockerfile.api               # API REST (python:3.12.8, non-root, OTel zero-code)
-├── pyproject.toml               # Dependencias, build, CLI scripts
-├── .env.example                 # Template de variaveis
-└── AGENTS.md                    # Guia para agentes de IA
+├── src/otrs_mcp/
+│   ├── main.py           # Entry point MCP (stdio / streamable-http)
+│   ├── tools.py          # 5 tools MCP
+│   ├── resources.py      # 3 resources MCP
+│   ├── mcp_auth.py       # TokenVerifier de API key + escopos do MCP
+│   ├── api.py            # API REST + middleware de security headers
+│   ├── routes/admin.py   # Login, refresh, users, keys, auditoria, métricas
+│   ├── auth.py           # JWT, API key, rate limit, permissões
+│   ├── database.py       # SQLite WAL: schema e CRUD
+│   ├── client.py         # Cliente HTTP do OTRS com sessão e retry
+│   ├── config.py         # Configuração via pydantic-settings
+│   ├── validation.py     # validate_ticket_id
+│   ├── activity.py       # Atividade em JSON
+│   ├── constants.py      # Prioridades e estados válidos
+│   └── exceptions.py     # Exceções do domínio
+├── frontend/             # React 19 + Vite 6 + Tailwind
+├── nginx/mcp.conf        # Vhost do host
+├── otel/                 # Config do collector
+├── deploy/               # systemd, scripts, logrotate, fail2ban
+├── tests/unit/           # 41 testes
+├── docker-compose.yml
+├── Dockerfile            # MCP server
+└── Dockerfile.api        # API REST
 ```
+
+### Tabelas do SQLite
+
+| Tabela | Conteúdo |
+|---|---|
+| `admin_users` | Administradores e hash bcrypt |
+| `api_keys` | Keys com hash, permissões, rate limit, expiração, contador de uso |
+| `api_usage` | Auditoria de operações; base do rate limit e das métricas |
+| `login_audit` | Tentativas de login; base do lockout de brute-force |
 
 ---
 
 ## Desenvolvimento
 
-### Setup local
-
 ```bash
-git clone https://github.com/eduardoantoniojunior/otrs-mcp-server.git
-cd otrs-mcp-server
-
-# Python (backend)
 uv sync --extra dev
 
-# Frontend
-cd frontend && npm ci
-```
-
-### Testes
-
-```bash
-# Unitarios (41 testes)
 uv run pytest tests/unit/ -v
-
-# Com cobertura
 uv run pytest tests/unit/ --cov=src/otrs_mcp --cov-report=term-missing
-```
 
-### Formatacao e lint
-
-```bash
 uv run black src/
 uv run isort src/
 uv run mypy src/
 ```
 
-### Rodar local (desenvolvimento)
-
-```bash
-# API REST (porta 3000)
-uv run uvicorn otrs_mcp.api:app --port 3000 --reload
-
-# MCP Server (porta 8001)
-OTRS_MCP_TRANSPORT=http uv run python -m otrs_mcp.main
-
-# Frontend (porta 5173, hot reload)
-cd frontend && npm run dev
-```
-
-### CLI entry points
-
-```bash
-otrs-mcp-server   # Inicia o MCP server
-otrs-mcp-api      # Inicia a API REST
-```
+Entry points instalados: `otrs-mcp-server` (MCP) e `otrs-mcp-api` (REST).
 
 ---
 
-## Solucao de Problemas
+## Limitações conhecidas
 
-| Problema | Solucao |
+Pontos que valem atenção antes de expor o serviço:
+
+1. **Divergência de porta do frontend.** O Compose publica `127.0.0.1:8081:80`; o vhost faz `proxy_pass` para `127.0.0.1:8080`. Alinhe um dos dois, senão `/otrs/` responde 502.
+2. **Rate limit conta operações registradas.** A janela usa as linhas de `api_usage`, gravadas pela API REST após o sucesso da operação. As tools MCP registram atividade em `activity.json`, não em `api_usage`, então o rate limit de uma key usada só via MCP não é acionado.
+3. **`usage_count` infla no uso via MCP.** O token é validado em cada requisição HTTP do transporte streamable-http, e uma única sessão MCP gera várias requisições. O contador da key sobe mais rápido do que o número de tools chamadas.
+4. **Lockout de login por IP e usuário.** Como a contagem considera o username, tentativas repetidas contra um usuário existente podem bloquear temporariamente o login legítimo dele. O desbloqueio é por tempo (15 min).
+5. **SQLite sem criptografia em repouso.** Hashes de senha e de key ficam em `/data/otrs-mcp.db`. Proteja o volume e os backups.
+
+---
+
+## Solução de problemas
+
+| Sintoma | O que verificar |
 |---|---|
-| SSL error ao conectar no OTRS | Defina `OTRS_VERIFY_SSL=false` |
-| HTTP 301 redirect | Use URL HTTPS completa no `OTRS_BASE_URL` |
-| Auth 401 na API | Verifique API key (ativa? expirada? permissoes?) |
-| Rate limit 429 | Aumente o rate limit do token ou use `rate_limit: 0` |
-| Login bloqueado (429) | Brute-force lockout. Espere 15 min ou verifique no Login Audit |
-| MCP connection refused | Verifique se o container `mcp-server` esta rodando |
-| Frontend 404 no F5 | Verifique que o Nginx faz proxy para a porta 8080 |
-| Certificado SSL expirado | Execute `sudo certbot renew` |
-| IP banido pelo fail2ban | `sudo fail2ban-client set otrs-mcp-login unbanip <IP>` |
-| Container sem memoria | Ajuste limites em `docker-compose.yml` (deploy.resources.limits) |
-| Traces nao aparecem no Grafana | Verifique `OTEL_TEMPO_ENDPOINT` e `docker compose logs otel-collector` |
-| Frontend com subpath errado | Verifique `VITE_BASE_PATH` no `.env` e rebuild: `docker compose build frontend` |
-
-### Logs
+| Erro de SSL ao falar com o OTRS | `OTRS_VERIFY_SSL=false` para certificado interno |
+| Redirect 301 do OTRS | Use a URL HTTPS completa em `OTRS_BASE_URL` |
+| Start falha com `OTRSValidationError` | Falta `OTRS_BASE_URL`, `OTRS_USERNAME` ou `OTRS_PASSWORD` |
+| Start falha pedindo JWT secret | `OTRS_ENV=production` exige `OTRS_JWT_SECRET` |
+| Login sempre inválido no primeiro uso | Nenhum admin criado: defina `OTRS_ADMIN_PASSWORD` e recrie o container |
+| `401` na API | Key revogada, expirada ou header ausente |
+| `403` na API | Falta `read` ou `write` na key |
+| `401` no `/mcp` | Cliente MCP sem `Authorization`, ou key inválida/revogada/vencida |
+| `Permissao 'write' necessaria` na tool | A key só tem `read`; crie outra com `write` |
+| MCP recusa toda key | O container `mcp-server` precisa do volume `app_data:/data` e de `OTRS_DB_PATH` para ler a tabela `api_keys` |
+| `429` na API | Rate limit da key; aumente o valor ou use `0` |
+| `429` no login | Lockout de brute-force; espere 15 min e confira o Login Audit |
+| `422` em rota de ticket | `ticket_id` precisa ser só dígitos |
+| `502` em `/otrs/` | Porta do frontend divergente (8080 vs 8081) |
+| Traces ausentes no Grafana | Confira `OTEL_TEMPO_ENDPOINT` e `docker compose logs otel-collector` |
+| SPA quebrada em subpath | Rebuild com `VITE_BASE_PATH` correto |
 
 ```bash
-docker compose logs -f                # Todos os containers
-docker compose logs -f api            # API REST
-docker compose logs -f mcp-server     # MCP Server
-docker compose logs -f frontend       # Frontend
-docker compose logs -f otel-collector # OpenTelemetry Collector
-sudo journalctl -u otrs-mcp -f       # Systemd service
-sudo tail -f /var/log/nginx/error.log          # Nginx
-sudo fail2ban-client status otrs-mcp-login     # Fail2ban
+docker compose logs -f api
+docker compose logs -f mcp-server
+docker compose logs -f otel-collector
+sudo journalctl -u otrs-mcp -f
+sudo tail -f /var/log/nginx/mcp-admin-error.log
 ```
 
 ---
 
-## Licenca
+## Licença
 
 Apache-2.0

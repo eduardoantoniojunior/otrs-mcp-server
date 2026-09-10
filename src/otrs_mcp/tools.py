@@ -1,9 +1,10 @@
 """Tools MCP para o OTRS."""
 
 import logging
+import os
 import time
 from typing import Any
-import os
+
 from mcp.server.fastmcp import FastMCP
 
 from otrs_mcp.activity import record_tool_call
@@ -11,6 +12,12 @@ from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
 from otrs_mcp.constants import VALID_PRIORITIES
 from otrs_mcp.exceptions import OTRSValidationError
+from otrs_mcp.mcp_auth import (
+    ApiKeyVerifier,
+    auth_enabled,
+    build_auth_settings,
+    require_scope,
+)
 from otrs_mcp.validation import validate_ticket_id
 
 logger = logging.getLogger(__name__)
@@ -18,7 +25,19 @@ logger = logging.getLogger(__name__)
 MCP_HOST = os.getenv("OTRS_MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("OTRS_MCP_PORT", "8001"))
 
-mcp = FastMCP("OTRS API MCP", host=MCP_HOST, port=MCP_PORT)
+# No transporte HTTP o servidor exige uma API key valida em cada requisicao.
+# O FastMCP obriga informar token_verifier e auth em conjunto.
+if auth_enabled():
+    mcp = FastMCP(
+        "OTRS API MCP",
+        host=MCP_HOST,
+        port=MCP_PORT,
+        token_verifier=ApiKeyVerifier(),
+        auth=build_auth_settings(),
+    )
+    logger.info("MCP: autenticacao por API key ativa (transporte http)")
+else:
+    mcp = FastMCP("OTRS API MCP", host=MCP_HOST, port=MCP_PORT)
 
 _client: OTRSClient | None = None
 _config: OTRSConfig | None = None
@@ -59,6 +78,7 @@ async def create_ticket(
     customer_user: str | None = None,
     ticket_type: str | None = None,
 ) -> dict[str, Any]:
+    require_scope("write")
     client = _get_client()
     config = _get_config()
 
@@ -123,6 +143,7 @@ async def get_ticket(
     include_dynamic_fields: bool = True,
     include_extended_data: bool = True,
 ) -> dict[str, Any]:
+    require_scope("read")
     validate_ticket_id(ticket_id)
     client = _get_client()
     start = time.monotonic()
@@ -166,6 +187,7 @@ async def search_tickets(
     sort_by: str = "Age",
     order_by: str = "Down",
 ) -> dict[str, Any]:
+    require_scope("read")
     client = _get_client()
     start = time.monotonic()
     try:
@@ -224,6 +246,7 @@ async def update_ticket(
     customer_user: str | None = None,
     owner: str | None = None,
 ) -> dict[str, Any]:
+    require_scope("write")
     validate_ticket_id(ticket_id)
     client = _get_client()
 
@@ -281,6 +304,7 @@ async def update_ticket(
 
 @mcp.tool(description="Get ticket history from OTRS")
 async def get_ticket_history(ticket_id: str) -> dict[str, Any]:
+    require_scope("read")
     validate_ticket_id(ticket_id)
     client = _get_client()
     start = time.monotonic()

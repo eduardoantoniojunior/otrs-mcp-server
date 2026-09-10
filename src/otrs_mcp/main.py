@@ -8,7 +8,6 @@ Suporta dois modos de transporte:
 
 import logging
 import os
-from typing import Any
 
 import otrs_mcp.resources  # noqa: F401 — registra resources no mcp
 from otrs_mcp.client import OTRSClient
@@ -23,45 +22,19 @@ MCP_HOST = os.getenv("OTRS_MCP_HOST", "0.0.0.0")
 MCP_PORT = int(os.getenv("OTRS_MCP_PORT", "8001"))
 
 
-def _install_auth_middleware() -> None:
-    """Instala middleware de autenticacao por API key no servidor MCP.
+def _init_database() -> None:
+    """Garante que o schema existe antes de validar API keys.
 
-    Tenta usar a API de middleware do mcp.server.fastmcp. Se nao estiver
-    disponivel, emite um aviso e continua sem auth.
+    No transporte HTTP o servidor consulta a tabela `api_keys` a cada
+    requisicao. Quando o MCP roda em container separado da API, o banco pode
+    ainda nao ter sido inicializado.
     """
+    from otrs_mcp.database import init_db
+
     try:
-        from mcp.server.fastmcp import FastMCP
-
-        # Verificar se a versao do mcp suporta middleware
-        # FastMCP do pacote mcp>=1.9 pode nao ter add_middleware
-        if not hasattr(mcp, "add_middleware"):
-            logger.warning(
-                "FastMCP version does not support add_middleware(). "
-                "MCP HTTP transport will run without auth middleware. "
-                "Use a reverse proxy (Nginx) for authentication."
-            )
-            return
-
-        # Se a API existir, criar o middleware inline
-        # (evita imports de pacotes inexistentes)
-        class ApiKeyAuthMiddleware:
-            """Middleware que valida API key em chamadas MCP."""
-
-            async def on_call_tool(self, context: Any, call_next: Any) -> Any:
-                # Em HTTP mode, os headers estao disponiveis no contexto
-                # A implementacao exata depende da versao do mcp SDK
-                return await call_next(context)
-
-        mcp.add_middleware(ApiKeyAuthMiddleware())
-        logger.info("API key authentication middleware installed")
-    except ImportError:
-        logger.warning(
-            "Could not install auth middleware. "
-            "MCP HTTP transport running without auth. "
-            "Use Nginx reverse proxy for API key authentication."
-        )
+        init_db()
     except Exception as e:
-        logger.warning("Failed to install auth middleware: %s", e)
+        logger.warning("Nao foi possivel inicializar o banco de dados: %s", e)
 
 
 def run_server() -> None:
@@ -84,7 +57,10 @@ def run_server() -> None:
         logger.info(
             "Starting OTRS MCP Server (Streamable HTTP on %s:%d)...", MCP_HOST, MCP_PORT
         )
-        _install_auth_middleware()
+        _init_database()
+        logger.info(
+            "  Auth: API key obrigatoria em 'Authorization: Bearer sk-otrs-...'"
+        )
         mcp.run(transport="streamable-http")
     else:
         logger.info("Starting OTRS MCP Server (stdio)...")
