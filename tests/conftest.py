@@ -77,10 +77,10 @@ def mock_client() -> AsyncMock:
         "HistoryWebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketHistory;TicketID=123",
     }
     client.search_customer_users.return_value = {
-        "CustomerUserIDs": {
-            "user1@example.com": "User 1",
-            "user2@example.com": "User 2",
-        }
+        "CustomerUsers": [
+            {"Login": "user1@example.com", "Name": "User 1", "CustomerID": "company-a"},
+            {"Login": "user2@example.com", "Name": "User 2", "CustomerID": "company-b"},
+        ]
     }
     return client
 

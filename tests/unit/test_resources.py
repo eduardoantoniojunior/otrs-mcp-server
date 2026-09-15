@@ -103,11 +103,10 @@ class TestCustomersResource:
         """customers_resource deve retornar JSON dos customer users."""
         result = await customers_resource()
 
-        mock_client.search_customer_users.assert_called_once_with(
-            search="*", limit=200
-        )
+        mock_client.search_customer_users.assert_called_once_with(limit=200)
         data = json.loads(result)
-        assert "CustomerUserIDs" in data
+        assert "CustomerUsers" in data
+        assert len(data["CustomerUsers"]) == 2
 
     @pytest.mark.asyncio
     async def test_customers_resource_error(

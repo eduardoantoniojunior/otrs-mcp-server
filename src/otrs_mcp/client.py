@@ -368,20 +368,57 @@ class OTRSClient:
 
     async def search_customer_users(
         self,
-        search: str = "*",
-        limit: int = 100,
+        limit: int = 200,
     ) -> dict[str, Any]:
-        """Busca customer users no OTRS via CustomerUserSearch.
+        """Lista customer users distintos a partir dos tickets existentes.
+
+        Como a operacao CustomerUserSearch nao esta disponivel no webservice,
+        usa TicketSearch + TicketGet para extrair os customer users unicos
+        dos tickets mais recentes.
 
         Args:
-            search: Padrao de busca (default: "*" para listar todos).
-            limit: Maximo de resultados (default: 100).
+            limit: Maximo de tickets a consultar (default: 200).
 
         Returns:
-            Dicionario com lista de customer users encontrados.
+            Dicionario com CustomerUsers: lista de {Login, Name, CustomerID}.
         """
-        search_data: dict[str, Any] = {
-            "Search": search,
-            "Limit": limit,
-        }
-        return await self.request("CustomerUserSearch", search_data)
+        search_result = await self.search_tickets(
+            limit=limit, sort_by="Age", order_by="Down",
+        )
+
+        ticket_ids = search_result.get("TicketID", [])
+        if not ticket_ids:
+            return {"CustomerUsers": []}
+        if not isinstance(ticket_ids, list):
+            ticket_ids = [ticket_ids]
+
+        seen: set[str] = set()
+        customers: list[dict[str, str]] = []
+
+        for tid in ticket_ids:
+            try:
+                ticket = await self.get_ticket(
+                    str(tid),
+                    include_dynamic_fields=False,
+                    include_extended_data=False,
+                )
+                # TicketGet retorna Ticket como lista ou dict
+                ticket_data = ticket.get("Ticket")
+                if isinstance(ticket_data, list):
+                    ticket_data = ticket_data[0] if ticket_data else {}
+                if not isinstance(ticket_data, dict):
+                    continue
+
+                login = ticket_data.get("CustomerUserID", "")
+                if not login or login in seen:
+                    continue
+                seen.add(login)
+                customers.append({
+                    "Login": login,
+                    "Name": ticket_data.get("CustomerName", login),
+                    "CustomerID": ticket_data.get("CustomerID", ""),
+                })
+            except Exception:
+                continue
+
+        return {"CustomerUsers": customers}

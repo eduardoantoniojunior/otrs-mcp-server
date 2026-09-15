@@ -50,11 +50,11 @@ async def search_tickets_resource() -> str:
 
 @mcp.resource("otrs://customers")
 async def customers_resource() -> str:
-    """Lista os customer users cadastrados no OTRS (logins e emails)."""
+    """Lista os customer users distintos extraidos dos tickets recentes."""
     try:
         require_scope("read")
         client = _get_client()
-        result = await client.search_customer_users(search="*", limit=200)
+        result = await client.search_customer_users(limit=200)
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error("Erro ao listar customers: %s", e)

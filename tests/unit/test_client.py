@@ -326,30 +326,62 @@ class TestOTRSClientSearchCustomerUsers:
 
     @pytest.mark.asyncio
     async def test_search_customer_users_success(self, client: OTRSClient) -> None:
-        """search_customer_users deve retornar customer users."""
+        """search_customer_users deve extrair customer users distintos dos tickets."""
+        _setup_client_mock(
+            client,
+            # SessionCreate
+            _session_response(),
+            # TicketSearch retorna 2 tickets
+            _mock_response({"TicketID": ["100", "101"]}),
+            # TicketGet ticket 100
+            _mock_response({
+                "Ticket": [{"CustomerUserID": "user1@test.com", "CustomerName": "User 1", "CustomerID": "acme"}],
+            }),
+            # TicketGet ticket 101
+            _mock_response({
+                "Ticket": [{"CustomerUserID": "user2@test.com", "CustomerName": "User 2", "CustomerID": "globex"}],
+            }),
+        )
+
+        result = await client.search_customer_users(limit=10)
+
+        assert "CustomerUsers" in result
+        assert len(result["CustomerUsers"]) == 2
+        logins = {c["Login"] for c in result["CustomerUsers"]}
+        assert logins == {"user1@test.com", "user2@test.com"}
+
+    @pytest.mark.asyncio
+    async def test_search_customer_users_dedup(self, client: OTRSClient) -> None:
+        """search_customer_users deve retornar clientes unicos (sem duplicatas)."""
         _setup_client_mock(
             client,
             _session_response(),
-            _mock_response(
-                {"CustomerUserIDs": {"user1@test.com": "User 1", "user2@test.com": "User 2"}}
-            ),
+            # TicketSearch retorna 3 tickets, 2 do mesmo cliente
+            _mock_response({"TicketID": ["100", "101", "102"]}),
+            _mock_response({
+                "Ticket": [{"CustomerUserID": "user1@test.com", "CustomerName": "User 1", "CustomerID": "acme"}],
+            }),
+            _mock_response({
+                "Ticket": [{"CustomerUserID": "user1@test.com", "CustomerName": "User 1", "CustomerID": "acme"}],
+            }),
+            _mock_response({
+                "Ticket": [{"CustomerUserID": "user2@test.com", "CustomerName": "User 2", "CustomerID": "globex"}],
+            }),
+        )
+
+        result = await client.search_customer_users(limit=10)
+
+        assert len(result["CustomerUsers"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_search_customer_users_empty(self, client: OTRSClient) -> None:
+        """search_customer_users deve retornar lista vazia sem tickets."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response({}),
         )
 
         result = await client.search_customer_users()
 
-        assert "CustomerUserIDs" in result
-        assert len(result["CustomerUserIDs"]) == 2
-
-    @pytest.mark.asyncio
-    async def test_search_customer_users_with_filter(self, client: OTRSClient) -> None:
-        """search_customer_users deve aceitar filtro de busca."""
-        _setup_client_mock(
-            client,
-            _session_response(),
-            _mock_response({"CustomerUserIDs": {"admin@test.com": "Admin"}}),
-        )
-
-        result = await client.search_customer_users(search="admin*", limit=10)
-
-        assert "CustomerUserIDs" in result
-        assert len(result["CustomerUserIDs"]) == 1
+        assert result == {"CustomerUsers": []}
