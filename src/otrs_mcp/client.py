@@ -27,6 +27,7 @@ class OTRSClient:
         self._config = config
         self._session_id: str | None = None
         self._session_lock = asyncio.Lock()
+        self._discovered_type: str | None = None
         self._http_client: httpx.AsyncClient = httpx.AsyncClient(
             verify=config.verify_ssl,
             follow_redirects=True,
@@ -248,6 +249,48 @@ class OTRSClient:
         result["HistoryWebURL"] = self._config.get_ticket_history_web_url(ticket_id)
         return result
 
+    async def _discover_default_type(self) -> str:
+        """Descobre o Type valido buscando um ticket existente no OTRS.
+
+        Faz TicketSearch(limit=1) + TicketGet para extrair o campo Type
+        de um ticket real. O resultado e cacheado em _discovered_type
+        para evitar chamadas repetidas.
+
+        Returns:
+            Nome do Type encontrado, ou string vazia se nao conseguir.
+        """
+        if self._discovered_type is not None:
+            return self._discovered_type
+
+        try:
+            search = await self.request("TicketSearch", {
+                "Limit": 1, "Result": "ARRAY", "SortBy": "Age", "OrderBy": "Down",
+            })
+            ticket_ids = search.get("TicketID", [])
+            if not ticket_ids:
+                logger.warning("Nenhum ticket encontrado para descobrir o Type padrao")
+                self._discovered_type = ""
+                return ""
+
+            tid = ticket_ids[0] if isinstance(ticket_ids, list) else ticket_ids
+            ticket = await self.request("TicketGet", {"TicketID": str(tid)})
+
+            ticket_data = ticket.get("Ticket")
+            if isinstance(ticket_data, list):
+                ticket_data = ticket_data[0] if ticket_data else {}
+
+            discovered = ticket_data.get("Type", "") if isinstance(ticket_data, dict) else ""
+            self._discovered_type = discovered
+            if discovered:
+                logger.info("Type padrao descoberto do OTRS: '%s'", discovered)
+            else:
+                logger.warning("Ticket %s nao tem campo Type", tid)
+            return discovered
+        except Exception as e:
+            logger.warning("Falha ao descobrir Type padrao: %s", e)
+            self._discovered_type = ""
+            return ""
+
     async def create_ticket(
         self,
         title: str,
@@ -267,6 +310,8 @@ class OTRSClient:
         }
         
         type_val = ticket_type or self._config.default_type
+        if not type_val:
+            type_val = await self._discover_default_type()
         if type_val:
             ticket_obj["Type"] = type_val
 

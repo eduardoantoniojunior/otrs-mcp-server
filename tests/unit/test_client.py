@@ -258,7 +258,14 @@ class TestOTRSClientCreateTicket:
     async def test_create_ticket_success(self, client: OTRSClient) -> None:
         """create_ticket deve criar ticket e retornar dados."""
         _setup_client_mock(
-            client, _session_response(), _mock_response({"TicketID": "456"})
+            client,
+            _session_response(),
+            # _discover_default_type: TicketSearch
+            _mock_response({"TicketID": ["999"]}),
+            # _discover_default_type: TicketGet
+            _mock_response({"Ticket": [{"Type": "Unclassified"}]}),
+            # TicketCreate
+            _mock_response({"TicketID": "456"}),
         )
 
         result = await client.create_ticket("Test Title", "Test Body")
