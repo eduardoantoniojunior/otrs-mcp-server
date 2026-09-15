@@ -24,7 +24,7 @@ def otrs_config() -> OTRSConfig:
             "OTRS_DEFAULT_QUEUE": "Raw",
             "OTRS_DEFAULT_STATE": "new",
             "OTRS_DEFAULT_PRIORITY": "3 normal",
-            "OTRS_DEFAULT_TYPE": "Unclassified",
+            "OTRS_DEFAULT_TYPE": "Incidente",
         },
     ):
         return OTRSConfig()
