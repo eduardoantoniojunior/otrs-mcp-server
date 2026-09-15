@@ -33,7 +33,7 @@ class TestOTRSConfig:
             assert config.default_queue == "Raw"
             assert config.default_state == "new"
             assert config.default_priority == "3 normal"
-            assert config.default_type == ""
+            assert config.default_type == "Unclassified"
 
     def test_config_missing_base_url(self) -> None:
         """Configuracao sem OTRS_BASE_URL deve levantar erro."""

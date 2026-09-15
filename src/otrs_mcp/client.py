@@ -365,3 +365,23 @@ class OTRSClient:
         result["WebURL"] = self._config.get_ticket_web_url(ticket_id)
         result["HistoryWebURL"] = self._config.get_ticket_history_web_url(ticket_id)
         return result
+
+    async def search_customer_users(
+        self,
+        search: str = "*",
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Busca customer users no OTRS via CustomerUserSearch.
+
+        Args:
+            search: Padrao de busca (default: "*" para listar todos).
+            limit: Maximo de resultados (default: 100).
+
+        Returns:
+            Dicionario com lista de customer users encontrados.
+        """
+        search_data: dict[str, Any] = {
+            "Search": search,
+            "Limit": limit,
+        }
+        return await self.request("CustomerUserSearch", search_data)

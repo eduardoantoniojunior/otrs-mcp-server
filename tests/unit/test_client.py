@@ -319,3 +319,37 @@ class TestOTRSClientGetTicketHistory:
         assert result["TicketID"] == "123"
         assert "WebURL" in result
         assert "HistoryWebURL" in result
+
+
+class TestOTRSClientSearchCustomerUsers:
+    """Testes para o metodo search_customer_users."""
+
+    @pytest.mark.asyncio
+    async def test_search_customer_users_success(self, client: OTRSClient) -> None:
+        """search_customer_users deve retornar customer users."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {"CustomerUserIDs": {"user1@test.com": "User 1", "user2@test.com": "User 2"}}
+            ),
+        )
+
+        result = await client.search_customer_users()
+
+        assert "CustomerUserIDs" in result
+        assert len(result["CustomerUserIDs"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_search_customer_users_with_filter(self, client: OTRSClient) -> None:
+        """search_customer_users deve aceitar filtro de busca."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response({"CustomerUserIDs": {"admin@test.com": "Admin"}}),
+        )
+
+        result = await client.search_customer_users(search="admin*", limit=10)
+
+        assert "CustomerUserIDs" in result
+        assert len(result["CustomerUserIDs"]) == 1

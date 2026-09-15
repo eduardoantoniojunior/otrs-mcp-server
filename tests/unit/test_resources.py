@@ -5,6 +5,7 @@ import json
 import pytest
 
 from otrs_mcp.resources import (
+    customers_resource,
     search_tickets_resource,
     ticket_history_resource,
     ticket_resource,
@@ -90,3 +91,32 @@ class TestSearchTicketsResource:
 
         assert "Error searching tickets" in result
         mock_client.search_tickets.side_effect = None
+
+
+class TestCustomersResource:
+    """Testes para o resource customers_resource."""
+
+    @pytest.mark.asyncio
+    async def test_customers_resource_success(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """customers_resource deve retornar JSON dos customer users."""
+        result = await customers_resource()
+
+        mock_client.search_customer_users.assert_called_once_with(
+            search="*", limit=200
+        )
+        data = json.loads(result)
+        assert "CustomerUserIDs" in data
+
+    @pytest.mark.asyncio
+    async def test_customers_resource_error(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """customers_resource deve tratar erros."""
+        mock_client.search_customer_users.side_effect = Exception("Connection error")
+
+        result = await customers_resource()
+
+        assert "Error listing customers" in result
+        mock_client.search_customer_users.side_effect = None
