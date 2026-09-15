@@ -330,3 +330,30 @@ async def get_ticket_history(ticket_id: str) -> dict[str, Any]:
             ticket_id=ticket_id,
         )
         raise
+
+
+@mcp.tool(description="List distinct customer users from recent OTRS tickets")
+async def list_customer_users(limit: int = 200) -> dict[str, Any]:
+    require_scope("read")
+    client = _get_client()
+    start = time.monotonic()
+    try:
+        result = await client.search_customer_users(limit=limit)
+        elapsed = (time.monotonic() - start) * 1000
+        record_tool_call(
+            tool="list_customer_users",
+            status="success",
+            duration_ms=elapsed,
+            params={"limit": limit},
+        )
+        return result
+    except Exception as e:
+        elapsed = (time.monotonic() - start) * 1000
+        record_tool_call(
+            tool="list_customer_users",
+            status="error",
+            duration_ms=elapsed,
+            params={"limit": limit},
+            error=str(e),
+        )
+        raise
