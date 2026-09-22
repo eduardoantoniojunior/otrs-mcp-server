@@ -184,7 +184,9 @@ async def get_me(admin: dict[str, Any] = Depends(get_current_admin)) -> dict[str
 
 
 @router.post("/refresh", response_model=LoginResponse)
-async def refresh_token(admin: dict[str, Any] = Depends(get_current_admin)) -> LoginResponse:
+async def refresh_token(
+    admin: dict[str, Any] = Depends(get_current_admin),
+) -> LoginResponse:
     """Renova o JWT do admin autenticado sem exigir senha novamente.
 
     O token atual deve ser valido (nao expirado). Retorna um novo token

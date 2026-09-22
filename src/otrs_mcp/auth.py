@@ -33,7 +33,7 @@ if not JWT_SECRET:
     if _IS_PRODUCTION:
         raise RuntimeError(
             "OTRS_JWT_SECRET deve ser definido em produção. "
-            "Gere um segredo com: python -c \"import secrets; print(secrets.token_hex(32))\""
+            'Gere um segredo com: python -c "import secrets; print(secrets.token_hex(32))"'
         )
     logger.warning(
         "OTRS_JWT_SECRET nao definido. Um segredo aleatorio sera gerado. "

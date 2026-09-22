@@ -172,7 +172,9 @@ def verify_api_key(api_key: str, db_path: str | None = None) -> dict[str, Any] |
         }
 
 
-def check_rate_limit(api_key_id: int, rate_limit: int, db_path: str | None = None) -> tuple[bool, int]:
+def check_rate_limit(
+    api_key_id: int, rate_limit: int, db_path: str | None = None
+) -> tuple[bool, int]:
     """Verifica se a API key excedeu o rate limit (requests por minuto).
 
     Retorna (is_allowed, requests_in_window).
@@ -182,9 +184,7 @@ def check_rate_limit(api_key_id: int, rate_limit: int, db_path: str | None = Non
 
     from datetime import timedelta
 
-    window_start = (
-        datetime.now(timezone.utc) - timedelta(minutes=1)
-    ).isoformat()
+    window_start = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
 
     with get_db(db_path) as conn:
         row = conn.execute(
@@ -532,8 +532,7 @@ def get_daily_metrics(days: int = 14, db_path: str | None = None) -> dict[str, A
             for r in daily_rows
         ],
         "top_agents": [
-            {"agent_name": r["agent_name"], "total": r["total"]}
-            for r in agent_rows
+            {"agent_name": r["agent_name"], "total": r["total"]} for r in agent_rows
         ],
         "by_tool": [
             {
