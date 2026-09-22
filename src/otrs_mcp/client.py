@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from otrs_mcp.config import OTRSConfig
+from otrs_mcp.constants import ARTICLE_WHITELIST_FIELDS
 from otrs_mcp.exceptions import (
     OTRSAPIError,
     OTRSAuthenticationError,
@@ -18,6 +19,65 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 BACKOFF_BASE = 1.0
+
+
+def _extract_ticket_data(result: dict[str, Any]) -> dict[str, Any] | None:
+    """Extrai o dict do ticket de uma resposta de TicketGet.
+
+    O Ticket Connector do OTRS as vezes devolve `Ticket` como lista de um
+    unico dict, as vezes como dict direto, dependendo da versao.
+    """
+    ticket = result.get("Ticket")
+    if isinstance(ticket, list):
+        return ticket[0] if ticket else None
+    if isinstance(ticket, dict):
+        return ticket
+    return None
+
+
+def _extract_raw_articles(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extrai a lista bruta de artigos de uma resposta de TicketGet.
+
+    Locais possiveis segundo a versao/configuracao do OTRS:
+    - `result["Article"]` (top-level, formato antigo)
+    - `result["Articles"]` (top-level, formato novo)
+    - `result["Ticket"]["Article"]` (dentro do ticket)
+    - `result["Ticket"]["Articles"]` (dentro do ticket)
+    """
+    for key in ("Article", "Articles"):
+        raw = result.get(key)
+        if raw is not None:
+            return [raw] if isinstance(raw, dict) else list(raw)
+
+    ticket_data = _extract_ticket_data(result)
+    if ticket_data:
+        for key in ("Article", "Articles"):
+            raw = ticket_data.get(key)
+            if raw is not None:
+                return [raw] if isinstance(raw, dict) else list(raw)
+
+    return []
+
+
+def _sanitize_article(article: dict[str, Any]) -> dict[str, Any]:
+    """Aplica o whitelist de campos a um artigo bruto do OTRS."""
+    return {k: v for k, v in article.items() if k in ARTICLE_WHITELIST_FIELDS}
+
+
+def _sort_articles(articles: list[dict[str, Any]], order: str) -> list[dict[str, Any]]:
+    """Ordena artigos por CreateTime (ISO string ordena lexicograficamente),
+    com ArticleID como criterio de desempate."""
+
+    def sort_key(article: dict[str, Any]) -> tuple[str, int]:
+        create_time = str(article.get("CreateTime", ""))
+        try:
+            article_id = int(article.get("ArticleID", 0) or 0)
+        except (TypeError, ValueError):
+            article_id = 0
+        return (create_time, article_id)
+
+    reverse = order.lower() == "desc"
+    return sorted(articles, key=sort_key, reverse=reverse)
 
 
 class OTRSClient:
@@ -238,16 +298,100 @@ class OTRSClient:
         ticket_id: str,
         include_dynamic_fields: bool = True,
         include_extended_data: bool = True,
+        include_articles: bool = False,
+        article_limit: int | None = None,
+        article_order: str = "desc",
+        article_sender_type: str | None = None,
     ) -> dict[str, Any]:
-        data = {
+        """Retorna dados de um ticket com links para a interface web.
+
+        Args:
+            ticket_id: ID do ticket.
+            include_dynamic_fields: Inclui dynamic fields no retorno.
+            include_extended_data: Inclui dados estendidos do ticket.
+            include_articles: Se True, adiciona `Articles` (lista) com o
+                corpo dos artigos ja sanitizados por whitelist. Aumenta o
+                payload significativamente; default False.
+            article_limit: Quando `include_articles=True`, limita a
+                quantidade de artigos retornados (apos aplicar order).
+            article_order: `"desc"` (default, mais novos primeiro) ou
+                `"asc"`. Ordenacao por `CreateTime` com `ArticleID` como
+                desempate.
+            article_sender_type: Filtra artigos por `SenderType` (ex.
+                "customer", "agent", "system"). Aplicado antes do limit.
+        """
+        data: dict[str, Any] = {
             "TicketID": ticket_id,
             "DynamicFields": 1 if include_dynamic_fields else 0,
             "Extended": 1 if include_extended_data else 0,
         }
+        if include_articles:
+            # AllArticles=1 e' a chave usada pelo Ticket Connector para
+            # retornar os corpos dos artigos junto do ticket.
+            data["AllArticles"] = 1
+
         result = await self.request("TicketGet", data)
+
+        if include_articles:
+            raw_articles = _extract_raw_articles(result)
+            if article_sender_type:
+                raw_articles = [
+                    a
+                    for a in raw_articles
+                    if str(a.get("SenderType", "")).lower()
+                    == article_sender_type.lower()
+                ]
+            ordered = _sort_articles(raw_articles, article_order)
+            if article_limit is not None and article_limit >= 0:
+                ordered = ordered[:article_limit]
+            sanitized = [_sanitize_article(a) for a in ordered]
+
+            # Remove Article/Articles brutos do payload devolvido ao cliente:
+            # o retorno canonico passa a ser `Articles` sanitizado.
+            result.pop("Article", None)
+            result.pop("Articles", None)
+            ticket_data = _extract_ticket_data(result)
+            if isinstance(ticket_data, dict):
+                ticket_data.pop("Article", None)
+                ticket_data.pop("Articles", None)
+
+            result["Articles"] = sanitized
+            result["ArticleCount"] = len(sanitized)
+
         result["WebURL"] = self._config.get_ticket_web_url(ticket_id)
         result["HistoryWebURL"] = self._config.get_ticket_history_web_url(ticket_id)
         return result
+
+    async def get_ticket_articles(
+        self,
+        ticket_id: str,
+        limit: int = 20,
+        order: str = "desc",
+        sender_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Retorna apenas os artigos (corpo) de um ticket.
+
+        Wrapper focado em conteudo: dispara `get_ticket` com
+        `include_articles=True` e devolve so o essencial para o consumidor
+        de MCP que quer ler o conversa do ticket sem receber metadados
+        completos.
+        """
+        result = await self.get_ticket(
+            ticket_id=ticket_id,
+            include_dynamic_fields=False,
+            include_extended_data=False,
+            include_articles=True,
+            article_limit=limit,
+            article_order=order,
+            article_sender_type=sender_type,
+        )
+        return {
+            "TicketID": ticket_id,
+            "Articles": result.get("Articles", []),
+            "ArticleCount": result.get("ArticleCount", 0),
+            "WebURL": result.get("WebURL"),
+            "HistoryWebURL": result.get("HistoryWebURL"),
+        }
 
     async def _discover_default_type(self) -> str:
         """Descobre o Type valido buscando um ticket existente no OTRS.
@@ -263,9 +407,15 @@ class OTRSClient:
             return self._discovered_type
 
         try:
-            search = await self.request("TicketSearch", {
-                "Limit": 1, "Result": "ARRAY", "SortBy": "Age", "OrderBy": "Down",
-            })
+            search = await self.request(
+                "TicketSearch",
+                {
+                    "Limit": 1,
+                    "Result": "ARRAY",
+                    "SortBy": "Age",
+                    "OrderBy": "Down",
+                },
+            )
             ticket_ids = search.get("TicketID", [])
             if not ticket_ids:
                 logger.warning("Nenhum ticket encontrado para descobrir o Type padrao")
@@ -279,7 +429,9 @@ class OTRSClient:
             if isinstance(ticket_data, list):
                 ticket_data = ticket_data[0] if ticket_data else {}
 
-            discovered = ticket_data.get("Type", "") if isinstance(ticket_data, dict) else ""
+            discovered = (
+                ticket_data.get("Type", "") if isinstance(ticket_data, dict) else ""
+            )
             self._discovered_type = discovered
             if discovered:
                 logger.info("Type padrao descoberto do OTRS: '%s'", discovered)
@@ -308,7 +460,7 @@ class OTRSClient:
             "State": state or self._config.default_state,
             "CustomerUser": customer_user or self._config.username,
         }
-        
+
         type_val = ticket_type or self._config.default_type
         if not type_val:
             type_val = await self._discover_default_type()
@@ -428,7 +580,9 @@ class OTRSClient:
             Dicionario com CustomerUsers: lista de {Login, Name, CustomerID}.
         """
         search_result = await self.search_tickets(
-            limit=limit, sort_by="Age", order_by="Down",
+            limit=limit,
+            sort_by="Age",
+            order_by="Down",
         )
 
         ticket_ids = search_result.get("TicketID", [])
@@ -458,11 +612,13 @@ class OTRSClient:
                 if not login or login in seen:
                     continue
                 seen.add(login)
-                customers.append({
-                    "Login": login,
-                    "Name": ticket_data.get("CustomerName", login),
-                    "CustomerID": ticket_data.get("CustomerID", ""),
-                })
+                customers.append(
+                    {
+                        "Login": login,
+                        "Name": ticket_data.get("CustomerName", login),
+                        "CustomerID": ticket_data.get("CustomerID", ""),
+                    }
+                )
             except Exception:
                 continue
 

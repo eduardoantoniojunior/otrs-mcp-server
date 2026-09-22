@@ -16,7 +16,7 @@ from otrs_mcp.activity import clear_activity, get_activity, get_summary
 from otrs_mcp.auth import get_api_key_identity, require_permission
 from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
-from otrs_mcp.constants import VALID_PRIORITIES
+from otrs_mcp.constants import VALID_ARTICLE_ORDERS, VALID_PRIORITIES
 from otrs_mcp.database import init_db, record_activity
 from otrs_mcp.exceptions import (
     OTRSAPIError,
@@ -160,7 +160,9 @@ async def get_config(
     """Retorna configuração do sistema. Requer autenticação."""
     config = OTRSConfig()
     return {
-        "valid_queues": [q.strip() for q in config.valid_queues.split(",") if q.strip()],
+        "valid_queues": [
+            q.strip() for q in config.valid_queues.split(",") if q.strip()
+        ],
         "valid_types": [t.strip() for t in config.valid_types.split(",") if t.strip()],
     }
 
@@ -224,13 +226,37 @@ async def list_tickets(
 @app.get("/api/tickets/{ticket_id}")
 async def get_ticket(
     ticket_id: str,
+    include_articles: bool = Query(
+        False,
+        description=(
+            "Se true, retorna o campo 'Articles' com o corpo dos artigos "
+            "(mensagens do cliente e respostas do atendente)."
+        ),
+    ),
+    article_limit: int | None = Query(None, ge=1, le=200),
+    article_order: str = Query("desc"),
+    article_sender_type: str | None = Query(None, max_length=50),
     identity: dict[str, Any] = Depends(require_permission("read")),
 ) -> dict:
     _validate_ticket_id(ticket_id)
+    if article_order.lower() not in VALID_ARTICLE_ORDERS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"article_order invalido: '{article_order}'. "
+                f"Valores validos: {', '.join(sorted(VALID_ARTICLE_ORDERS))}"
+            ),
+        )
     client = _get_client()
     start = time.monotonic()
     try:
-        result = await client.get_ticket(ticket_id=ticket_id)
+        result = await client.get_ticket(
+            ticket_id=ticket_id,
+            include_articles=include_articles,
+            article_limit=article_limit,
+            article_order=article_order,
+            article_sender_type=article_sender_type,
+        )
         elapsed = (time.monotonic() - start) * 1000
         record_activity(
             tool="get_ticket",
@@ -238,7 +264,7 @@ async def get_ticket(
             duration_ms=elapsed,
             api_key_id=identity.get("id"),
             agent_name=identity.get("agent_name"),
-            params={"ticket_id": ticket_id},
+            params={"ticket_id": ticket_id, "include_articles": include_articles},
             ticket_id=ticket_id,
         )
         return result
@@ -363,6 +389,69 @@ async def update_ticket(
         raise HTTPException(status_code=502, detail="Erro na comunicacao com o OTRS")
     except Exception as e:
         logger.error("Erro inesperado ao atualizar ticket %s: %s", ticket_id, e)
+        raise HTTPException(status_code=500, detail="Erro interno do servidor")
+
+
+@app.get("/api/tickets/{ticket_id}/articles")
+async def get_ticket_articles(
+    ticket_id: str,
+    limit: int = Query(20, ge=1, le=200),
+    order: str = Query("desc"),
+    sender_type: str | None = Query(None, max_length=50),
+    identity: dict[str, Any] = Depends(require_permission("read")),
+) -> dict[str, Any]:
+    _validate_ticket_id(ticket_id)
+    if order.lower() not in VALID_ARTICLE_ORDERS:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"order invalido: '{order}'. "
+                f"Valores validos: {', '.join(sorted(VALID_ARTICLE_ORDERS))}"
+            ),
+        )
+    client = _get_client()
+    start = time.monotonic()
+    try:
+        result = await client.get_ticket_articles(
+            ticket_id=ticket_id,
+            limit=limit,
+            order=order,
+            sender_type=sender_type,
+        )
+        elapsed = (time.monotonic() - start) * 1000
+        record_activity(
+            tool="get_ticket_articles",
+            status="success",
+            duration_ms=elapsed,
+            api_key_id=identity.get("id"),
+            agent_name=identity.get("agent_name"),
+            params={
+                "ticket_id": ticket_id,
+                "limit": limit,
+                "order": order,
+                "sender_type": sender_type,
+            },
+            ticket_id=ticket_id,
+        )
+        return result
+    except OTRSTicketNotFoundError as e:
+        logger.error("Ticket %s nao encontrado ao buscar artigos: %s", ticket_id, e)
+        raise HTTPException(
+            status_code=404, detail=f"Ticket {ticket_id} nao encontrado"
+        )
+    except OTRSConnectionError as e:
+        logger.error("Erro de conexao ao obter artigos do ticket %s: %s", ticket_id, e)
+        raise HTTPException(status_code=503, detail="Servico OTRS indisponivel")
+    except OTRSAuthenticationError as e:
+        logger.error(
+            "Erro de autenticacao ao obter artigos do ticket %s: %s", ticket_id, e
+        )
+        raise HTTPException(status_code=401, detail="Credenciais OTRS invalidas")
+    except OTRSAPIError as e:
+        logger.error("Erro da API OTRS ao obter artigos do ticket %s: %s", ticket_id, e)
+        raise HTTPException(status_code=502, detail="Erro na comunicacao com o OTRS")
+    except Exception as e:
+        logger.error("Erro inesperado ao obter artigos do ticket %s: %s", ticket_id, e)
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
 
 

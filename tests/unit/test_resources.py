@@ -7,6 +7,7 @@ import pytest
 from otrs_mcp.resources import (
     customers_resource,
     search_tickets_resource,
+    ticket_articles_resource,
     ticket_history_resource,
     ticket_resource,
 )
@@ -119,3 +120,34 @@ class TestCustomersResource:
 
         assert "Error listing customers" in result
         mock_client.search_customer_users.side_effect = None
+
+
+class TestTicketArticlesResource:
+    """Testes para o resource ticket_articles_resource."""
+
+    @pytest.mark.asyncio
+    async def test_ticket_articles_resource_success(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """ticket_articles_resource deve retornar JSON dos artigos."""
+        result = await ticket_articles_resource(ticket_id="123")
+
+        mock_client.get_ticket_articles.assert_called_once_with(
+            ticket_id="123", limit=20, order="desc"
+        )
+        data = json.loads(result)
+        assert data["TicketID"] == "123"
+        assert data["ArticleCount"] == 1
+        assert len(data["Articles"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_ticket_articles_resource_error(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """ticket_articles_resource deve tratar erros."""
+        mock_client.get_ticket_articles.side_effect = Exception("boom")
+
+        result = await ticket_articles_resource(ticket_id="123")
+
+        assert "Error retrieving ticket articles" in result
+        mock_client.get_ticket_articles.side_effect = None

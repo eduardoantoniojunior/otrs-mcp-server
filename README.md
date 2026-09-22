@@ -44,7 +44,7 @@ Três formas de consumir o mesmo backend OTRS:
 | **API REST** (FastAPI) | Scripts, integrações, o próprio frontend | API key ou JWT |
 | **Painel web** (React) | Administradores humanos | JWT (login com usuário e senha) |
 
-Operações OTRS cobertas: `SessionCreate`, `TicketCreate`, `TicketGet`, `TicketSearch`, `TicketUpdate`, `TicketHistoryGet`.
+Operações OTRS cobertas: `SessionCreate`, `TicketCreate`, `TicketGet` (com ou sem `AllArticles`), `TicketSearch`, `TicketUpdate`, `TicketHistoryGet`.
 
 ---
 
@@ -176,7 +176,7 @@ São recusadas as keys inexistentes, revogadas (`active = 0`) e vencidas (`expir
 
 | Permissão da key | Tools liberadas |
 |---|---|
-| `read` | `get_ticket`, `search_tickets`, `get_ticket_history` e os resources |
+| `read` | `get_ticket`, `get_ticket_articles`, `search_tickets`, `get_ticket_history`, `list_customer_users` e os resources |
 | `write` | `create_ticket`, `update_ticket` |
 | `admin` | todas |
 
@@ -276,8 +276,10 @@ Com o MCP conectado, o modelo resolve pedidos em linguagem natural:
 - "Quais tickets estão em aberto na fila Infraestrutura?"
 - "Mostre o histórico do ticket 4821"
 - "Mude o ticket 4821 para closed successful"
+- "Resuma a conversa do ticket 4821" — usa `get_ticket_articles`
+- "O que o cliente disse no ticket 4821?" — `get_ticket_articles` com `sender_type=customer`
 
-Toda resposta de ticket inclui `WebURL` (e `HistoryWebURL`, quando aplicável) apontando para a interface web do OTRS, o que dá ao agente um link clicável para devolver ao usuário.
+Retornos incluem links prontos para a interface do OTRS: `get_ticket`, `update_ticket`, `create_ticket` e `get_ticket_history` retornam `WebURL`; `get_ticket` e `get_ticket_history` também retornam `HistoryWebURL`; `search_tickets` retorna `WebSearchURL` e `TicketWebURLs`.
 
 ---
 
@@ -285,13 +287,17 @@ Toda resposta de ticket inclui `WebURL` (e `HistoryWebURL`, quando aplicável) a
 
 | Tool | Parâmetros | Observações |
 |---|---|---|
-| `create_ticket` | `title`, `body`, `queue?`, `priority?`, `state?`, `customer_user?`, `ticket_type?` | Aplica os defaults de `OTRS_DEFAULT_*`; valida prioridade |
-| `get_ticket` | `ticket_id`, `include_dynamic_fields?`, `include_extended_data?` | `ticket_id` precisa ser numérico |
-| `search_tickets` | `customer_user?`, `customer_id?`, `queue?`, `state?`, `priority?`, `title?`, `limit?`, `sort_by?`, `order_by?` | `title` aceita `*` como curinga (convertido para `%`) |
-| `update_ticket` | `ticket_id`, `title?`, `queue?`, `priority?`, `state?`, `customer_user?`, `owner?` | Envia só os campos preenchidos |
-| `get_ticket_history` | `ticket_id` | — |
+| `create_ticket` | `title`, `body`, `queue?`, `priority?`, `state?`, `customer_user?`, `ticket_type?` | Aplica os defaults de `OTRS_DEFAULT_*`; valida prioridade. Retorna `WebURL` |
+| `get_ticket` | `ticket_id`, `include_dynamic_fields?`, `include_extended_data?`, `include_articles?`, `article_limit?`, `article_order?`, `article_sender_type?` | `ticket_id` precisa ser numérico. Retorna `WebURL` e `HistoryWebURL`. Com `include_articles=True`, também `Articles` (whitelist) e `ArticleCount` |
+| `get_ticket_articles` | `ticket_id`, `limit?` (default 20), `order?` (`asc`\|`desc`), `sender_type?` | Retorna só a lista de artigos (Subject, Body, SenderType, IsVisibleForCustomer, CreateTime) + `WebURL`/`HistoryWebURL`. Use quando o pedido é sobre conteúdo/conversa do ticket |
+| `search_tickets` | `customer_user?`, `customer_id?`, `queue?`, `state?`, `priority?`, `title?`, `limit?`, `sort_by?`, `order_by?` | `title` aceita `*` como curinga (convertido para `%`). Retorna `WebSearchURL` e `TicketWebURLs` |
+| `update_ticket` | `ticket_id`, `title?`, `queue?`, `priority?`, `state?`, `customer_user?`, `owner?` | Envia só os campos preenchidos. Retorna `WebURL` |
+| `get_ticket_history` | `ticket_id` | Retorna `WebURL` e `HistoryWebURL`. Traz apenas eventos (mudanças de estado, atribuições, `ArticleID`), sem corpo dos artigos — use `get_ticket_articles` para o conteúdo |
+| `list_customer_users` | `limit?` (default 200) | Deriva a lista de tickets recentes |
 
 Prioridades aceitas (`src/otrs_mcp/constants.py`): `1 very low`, `2 low`, `3 normal`, `4 high`, `5 very high`.
+
+Campos retornados por artigo (whitelist em `constants.py::ARTICLE_WHITELIST_FIELDS`): `ArticleID`, `Subject`, `Body`, `SenderType`, `ArticleType`, `CommunicationChannel`, `IsVisibleForCustomer`, `CreateTime`, `ChangeTime`, `From`, `To`, `Cc`, `ContentType`, `Charset`, `MimeType`. Campos internos do OTRS (`MessageID`, `InReplyTo`, `References`, etc.) são filtrados.
 
 Cada chamada é registrada em `activity.json` com tool, status, duração e `ticket_id`. Campos chamados `password` são removidos antes de gravar.
 
@@ -301,8 +307,9 @@ Cada chamada é registrada em `activity.json` com tool, status, duração e `tic
 
 | URI | Conteúdo |
 |---|---|
-| `otrs://ticket/{ticket_id}` | Ticket completo em JSON |
-| `otrs://ticket/{ticket_id}/history` | Histórico do ticket |
+| `otrs://ticket/{ticket_id}` | Ticket completo em JSON (metadados; use a tool `get_ticket` com `include_articles=True` para o corpo) |
+| `otrs://ticket/{ticket_id}/articles` | Últimos 20 artigos do ticket em ordem descendente |
+| `otrs://ticket/{ticket_id}/history` | Histórico do ticket (eventos, sem corpo) |
 | `otrs://search/tickets` | Os 20 tickets mais recentes |
 
 ---
@@ -329,12 +336,17 @@ Authorization: Bearer <api-key-ou-jwt>
 |---|---|---|
 | `GET` | `/api/tickets` | `read` |
 | `GET` | `/api/tickets/{id}` | `read` |
+| `GET` | `/api/tickets/{id}/articles` | `read` |
 | `POST` | `/api/tickets` | `write` |
 | `PUT` | `/api/tickets/{id}` | `write` |
 | `GET` | `/api/tickets/{id}/history` | `read` |
 | `GET` | `/api/config` | autenticado |
 
 Filtros de `GET /api/tickets`: `customer_user`, `customer_id`, `queue`, `state`, `priority`, `title`, `limit` (1–200), `sort_by`, `order_by`.
+
+Query params de `GET /api/tickets/{id}`: `include_articles` (bool), `article_limit` (1–200), `article_order` (`asc`|`desc`), `article_sender_type` (ex.: `customer`, `agent`, `system`).
+
+Query params de `GET /api/tickets/{id}/articles`: `limit` (1–200, default 20), `order` (`asc`|`desc`), `sender_type`.
 
 ### Atividade — API key ou JWT
 
@@ -367,6 +379,10 @@ BASE="https://seu-dominio/otrs/api"
 
 # Buscar tickets novos
 curl -s -H "Authorization: Bearer $KEY" "$BASE/tickets?state=new&limit=5"
+
+# Ler o corpo dos artigos de um ticket
+curl -s -H "Authorization: Bearer $KEY" \
+  "$BASE/tickets/4821/articles?limit=10&order=desc&sender_type=customer"
 
 # Criar ticket
 curl -s -X POST "$BASE/tickets" \

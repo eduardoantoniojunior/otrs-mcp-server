@@ -6,6 +6,7 @@ from otrs_mcp.exceptions import OTRSValidationError
 from otrs_mcp.tools import (
     create_ticket,
     get_ticket,
+    get_ticket_articles,
     get_ticket_history,
     search_tickets,
     update_ticket,
@@ -72,13 +73,17 @@ class TestGetTicket:
 
     @pytest.mark.asyncio
     async def test_get_ticket_success(self, initialized_tools, mock_client) -> None:
-        """get_ticket deve chamar client.get_ticket."""
+        """get_ticket deve chamar client.get_ticket com defaults."""
         result = await get_ticket(ticket_id="123")
 
         mock_client.get_ticket.assert_called_once_with(
             ticket_id="123",
             include_dynamic_fields=True,
             include_extended_data=True,
+            include_articles=False,
+            article_limit=None,
+            article_order="desc",
+            article_sender_type=None,
         )
         assert result["TicketID"] == "123"
 
@@ -93,7 +98,102 @@ class TestGetTicket:
             ticket_id="123",
             include_dynamic_fields=False,
             include_extended_data=True,
+            include_articles=False,
+            article_limit=None,
+            article_order="desc",
+            article_sender_type=None,
         )
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_with_articles(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """get_ticket deve encaminhar include_articles/limit/order/sender_type."""
+        await get_ticket(
+            ticket_id="123",
+            include_articles=True,
+            article_limit=5,
+            article_order="asc",
+            article_sender_type="customer",
+        )
+
+        mock_client.get_ticket.assert_called_once_with(
+            ticket_id="123",
+            include_dynamic_fields=True,
+            include_extended_data=True,
+            include_articles=True,
+            article_limit=5,
+            article_order="asc",
+            article_sender_type="customer",
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_invalid_article_order(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """get_ticket deve rejeitar article_order fora do enum."""
+        with pytest.raises(OTRSValidationError, match="article_order invalido"):
+            await get_ticket(ticket_id="123", article_order="descending")
+
+        mock_client.get_ticket.assert_not_called()
+
+
+class TestGetTicketArticles:
+    """Testes para a tool get_ticket_articles."""
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_articles_success(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """get_ticket_articles deve chamar client.get_ticket_articles."""
+        result = await get_ticket_articles(ticket_id="123")
+
+        mock_client.get_ticket_articles.assert_called_once_with(
+            ticket_id="123",
+            limit=20,
+            order="desc",
+            sender_type=None,
+        )
+        assert result["TicketID"] == "123"
+        assert result["ArticleCount"] == 1
+        assert len(result["Articles"]) == 1
+        assert result["Articles"][0]["Body"] == "Ola, obrigado pelo contato."
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_articles_custom_params(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """get_ticket_articles deve encaminhar limit, order e sender_type."""
+        await get_ticket_articles(
+            ticket_id="123", limit=5, order="asc", sender_type="agent"
+        )
+
+        mock_client.get_ticket_articles.assert_called_once_with(
+            ticket_id="123",
+            limit=5,
+            order="asc",
+            sender_type="agent",
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_articles_invalid_order(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """get_ticket_articles deve rejeitar order invalido."""
+        with pytest.raises(OTRSValidationError, match="order invalido"):
+            await get_ticket_articles(ticket_id="123", order="latest")
+
+        mock_client.get_ticket_articles.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_articles_invalid_ticket_id(
+        self, initialized_tools, mock_client
+    ) -> None:
+        """get_ticket_articles deve rejeitar ticket_id nao numerico."""
+        with pytest.raises(OTRSValidationError):
+            await get_ticket_articles(ticket_id="abc")
+
+        mock_client.get_ticket_articles.assert_not_called()
 
 
 class TestSearchTickets:

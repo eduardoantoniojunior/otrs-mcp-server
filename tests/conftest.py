@@ -48,6 +48,22 @@ def mock_client() -> AsyncMock:
         "WebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketZoom;TicketID=123",
         "HistoryWebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketHistory;TicketID=123",
     }
+    client.get_ticket_articles.return_value = {
+        "TicketID": "123",
+        "Articles": [
+            {
+                "ArticleID": "10",
+                "Subject": "Reply",
+                "Body": "Ola, obrigado pelo contato.",
+                "SenderType": "agent",
+                "IsVisibleForCustomer": "1",
+                "CreateTime": "2026-09-22 10:00:00",
+            }
+        ],
+        "ArticleCount": 1,
+        "WebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketZoom;TicketID=123",
+        "HistoryWebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketHistory;TicketID=123",
+    }
     client.create_ticket.return_value = {
         "TicketID": "456",
         "WebURL": "https://test-otrs.example.com/index.pl?Action=AgentTicketZoom;TicketID=456",

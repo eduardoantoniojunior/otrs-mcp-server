@@ -22,6 +22,27 @@ async def ticket_resource(ticket_id: str) -> str:
         return f"Error retrieving ticket: {e}"
 
 
+@mcp.resource("otrs://ticket/{ticket_id}/articles")
+async def ticket_articles_resource(ticket_id: str) -> str:
+    """Retorna os artigos (corpo, remetente, data) de um ticket.
+
+    Espelha `get_ticket_articles(ticket_id, limit=20, order="desc")`.
+    Use este resource quando o consumidor MCP precisa ler a conversa do
+    ticket (mensagens do cliente e respostas do atendente) sem baixar
+    o payload completo de metadados.
+    """
+    try:
+        require_scope("read")
+        client = _get_client()
+        result = await client.get_ticket_articles(
+            ticket_id=ticket_id, limit=20, order="desc"
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error("Erro ao obter artigos do ticket %s: %s", ticket_id, e)
+        return f"Error retrieving ticket articles: {e}"
+
+
 @mcp.resource("otrs://ticket/{ticket_id}/history")
 async def ticket_history_resource(ticket_id: str) -> str:
     """Retorna historico do ticket com links para a interface web."""

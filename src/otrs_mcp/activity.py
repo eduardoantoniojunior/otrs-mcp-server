@@ -98,7 +98,12 @@ def record_tool_call(
     if error:
         event["error"] = error
     if params:
-        safe_params = {k: v for k, v in params.items() if k not in ("password",)}
+        # Campos filtrados do log de atividade para nao vazar dado sensivel:
+        # senha (credenciais) e corpo de ticket/artigos (conteudo do cliente).
+        # Comparacao case-insensitive porque o Ticket Connector as vezes
+        # devolve as chaves em CamelCase.
+        _blocked = {"password", "body", "article", "articles"}
+        safe_params = {k: v for k, v in params.items() if k.lower() not in _blocked}
         event["params"] = safe_params
 
     with _lock:

@@ -341,13 +341,29 @@ class TestOTRSClientSearchCustomerUsers:
             # TicketSearch retorna 2 tickets
             _mock_response({"TicketID": ["100", "101"]}),
             # TicketGet ticket 100
-            _mock_response({
-                "Ticket": [{"CustomerUserID": "user1@test.com", "CustomerName": "User 1", "CustomerID": "acme"}],
-            }),
+            _mock_response(
+                {
+                    "Ticket": [
+                        {
+                            "CustomerUserID": "user1@test.com",
+                            "CustomerName": "User 1",
+                            "CustomerID": "acme",
+                        }
+                    ],
+                }
+            ),
             # TicketGet ticket 101
-            _mock_response({
-                "Ticket": [{"CustomerUserID": "user2@test.com", "CustomerName": "User 2", "CustomerID": "globex"}],
-            }),
+            _mock_response(
+                {
+                    "Ticket": [
+                        {
+                            "CustomerUserID": "user2@test.com",
+                            "CustomerName": "User 2",
+                            "CustomerID": "globex",
+                        }
+                    ],
+                }
+            ),
         )
 
         result = await client.search_customer_users(limit=10)
@@ -365,15 +381,39 @@ class TestOTRSClientSearchCustomerUsers:
             _session_response(),
             # TicketSearch retorna 3 tickets, 2 do mesmo cliente
             _mock_response({"TicketID": ["100", "101", "102"]}),
-            _mock_response({
-                "Ticket": [{"CustomerUserID": "user1@test.com", "CustomerName": "User 1", "CustomerID": "acme"}],
-            }),
-            _mock_response({
-                "Ticket": [{"CustomerUserID": "user1@test.com", "CustomerName": "User 1", "CustomerID": "acme"}],
-            }),
-            _mock_response({
-                "Ticket": [{"CustomerUserID": "user2@test.com", "CustomerName": "User 2", "CustomerID": "globex"}],
-            }),
+            _mock_response(
+                {
+                    "Ticket": [
+                        {
+                            "CustomerUserID": "user1@test.com",
+                            "CustomerName": "User 1",
+                            "CustomerID": "acme",
+                        }
+                    ],
+                }
+            ),
+            _mock_response(
+                {
+                    "Ticket": [
+                        {
+                            "CustomerUserID": "user1@test.com",
+                            "CustomerName": "User 1",
+                            "CustomerID": "acme",
+                        }
+                    ],
+                }
+            ),
+            _mock_response(
+                {
+                    "Ticket": [
+                        {
+                            "CustomerUserID": "user2@test.com",
+                            "CustomerName": "User 2",
+                            "CustomerID": "globex",
+                        }
+                    ],
+                }
+            ),
         )
 
         result = await client.search_customer_users(limit=10)
@@ -392,3 +432,306 @@ class TestOTRSClientSearchCustomerUsers:
         result = await client.search_customer_users()
 
         assert result == {"CustomerUsers": []}
+
+
+class TestOTRSClientGetTicketWithArticles:
+    """Testes para get_ticket com include_articles."""
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_without_articles_sends_no_flag(
+        self, client: OTRSClient
+    ) -> None:
+        """Sem include_articles, o payload nao deve conter AllArticles."""
+        mock_http = _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response({"TicketID": "123"}),
+        )
+
+        await client.get_ticket("123")
+
+        request_json = mock_http.post.call_args_list[1].kwargs.get("json")
+        assert "AllArticles" not in request_json
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_with_articles_sends_flag(
+        self, client: OTRSClient
+    ) -> None:
+        """Com include_articles=True, o payload envia AllArticles=1."""
+        mock_http = _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response({"TicketID": "123", "Article": []}),
+        )
+
+        await client.get_ticket("123", include_articles=True)
+
+        request_json = mock_http.post.call_args_list[1].kwargs.get("json")
+        assert request_json["AllArticles"] == 1
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_normalizes_top_level_article_list(
+        self, client: OTRSClient
+    ) -> None:
+        """Articles no top-level como lista deve virar Articles (lista)."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": [
+                        {
+                            "ArticleID": "1",
+                            "Subject": "S1",
+                            "Body": "B1",
+                            "CreateTime": "2026-09-22 09:00:00",
+                        },
+                        {
+                            "ArticleID": "2",
+                            "Subject": "S2",
+                            "Body": "B2",
+                            "CreateTime": "2026-09-22 10:00:00",
+                        },
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket("123", include_articles=True)
+
+        assert result["ArticleCount"] == 2
+        # Artigo bruto some, forma canonica passa a ser Articles
+        assert "Article" not in result
+        assert len(result["Articles"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_normalizes_top_level_article_dict(
+        self, client: OTRSClient
+    ) -> None:
+        """Article como dict unico deve virar lista de 1."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": {
+                        "ArticleID": "1",
+                        "Subject": "S1",
+                        "Body": "B1",
+                        "CreateTime": "2026-09-22 09:00:00",
+                    },
+                }
+            ),
+        )
+
+        result = await client.get_ticket("123", include_articles=True)
+
+        assert result["ArticleCount"] == 1
+        assert result["Articles"][0]["ArticleID"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_normalizes_nested_article_list(
+        self, client: OTRSClient
+    ) -> None:
+        """Article aninhado em Ticket (formato antigo) tambem e' normalizado."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Ticket": [
+                        {
+                            "TicketID": "123",
+                            "Title": "T",
+                            "Article": [
+                                {
+                                    "ArticleID": "1",
+                                    "Subject": "S1",
+                                    "Body": "B1",
+                                    "CreateTime": "2026-09-22 09:00:00",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket("123", include_articles=True)
+
+        assert result["ArticleCount"] == 1
+        # O bloco Article aninhado no Ticket tambem e' removido
+        ticket = result["Ticket"][0]
+        assert "Article" not in ticket
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_applies_whitelist(self, client: OTRSClient) -> None:
+        """Campos nao whitelistados sao removidos dos artigos."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": [
+                        {
+                            "ArticleID": "1",
+                            "Subject": "S1",
+                            "Body": "B1",
+                            "SenderType": "agent",
+                            "CreateTime": "2026-09-22 09:00:00",
+                            # Estes campos NAO estao no whitelist:
+                            "InternalKey": "secret",
+                            "MessageID": "should-be-dropped",
+                            "InReplyTo": "abc",
+                        }
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket("123", include_articles=True)
+
+        article = result["Articles"][0]
+        assert "ArticleID" in article
+        assert "Body" in article
+        assert "SenderType" in article
+        assert "InternalKey" not in article
+        assert "MessageID" not in article
+        assert "InReplyTo" not in article
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_orders_desc_by_default(self, client: OTRSClient) -> None:
+        """Articles retornam por CreateTime desc por padrao."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": [
+                        {"ArticleID": "1", "CreateTime": "2026-09-22 09:00:00"},
+                        {"ArticleID": "2", "CreateTime": "2026-09-22 11:00:00"},
+                        {"ArticleID": "3", "CreateTime": "2026-09-22 10:00:00"},
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket("123", include_articles=True)
+
+        ids = [a["ArticleID"] for a in result["Articles"]]
+        assert ids == ["2", "3", "1"]
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_orders_asc(self, client: OTRSClient) -> None:
+        """article_order='asc' retorna do mais antigo ao mais novo."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": [
+                        {"ArticleID": "1", "CreateTime": "2026-09-22 09:00:00"},
+                        {"ArticleID": "2", "CreateTime": "2026-09-22 11:00:00"},
+                        {"ArticleID": "3", "CreateTime": "2026-09-22 10:00:00"},
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket(
+            "123", include_articles=True, article_order="asc"
+        )
+
+        ids = [a["ArticleID"] for a in result["Articles"]]
+        assert ids == ["1", "3", "2"]
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_applies_article_limit(self, client: OTRSClient) -> None:
+        """article_limit corta apos ordenar."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": [
+                        {"ArticleID": str(i), "CreateTime": f"2026-09-22 0{i}:00:00"}
+                        for i in range(1, 6)
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket(
+            "123", include_articles=True, article_limit=2, article_order="desc"
+        )
+
+        # Desc: pega os mais novos primeiro -> 5 e 4
+        ids = [a["ArticleID"] for a in result["Articles"]]
+        assert ids == ["5", "4"]
+        assert result["ArticleCount"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_filters_by_sender_type(self, client: OTRSClient) -> None:
+        """article_sender_type filtra a lista antes do limit."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": [
+                        {"ArticleID": "1", "SenderType": "customer", "CreateTime": "1"},
+                        {"ArticleID": "2", "SenderType": "agent", "CreateTime": "2"},
+                        {"ArticleID": "3", "SenderType": "customer", "CreateTime": "3"},
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket(
+            "123", include_articles=True, article_sender_type="customer"
+        )
+
+        assert result["ArticleCount"] == 2
+        ids = {a["ArticleID"] for a in result["Articles"]}
+        assert ids == {"1", "3"}
+
+
+class TestOTRSClientGetTicketArticles:
+    """Testes para o wrapper get_ticket_articles."""
+
+    @pytest.mark.asyncio
+    async def test_get_ticket_articles_returns_shape(self, client: OTRSClient) -> None:
+        """get_ticket_articles devolve apenas o essencial."""
+        _setup_client_mock(
+            client,
+            _session_response(),
+            _mock_response(
+                {
+                    "TicketID": "123",
+                    "Article": [
+                        {
+                            "ArticleID": "1",
+                            "Subject": "Hi",
+                            "Body": "Hello",
+                            "CreateTime": "2026-09-22 09:00:00",
+                        }
+                    ],
+                }
+            ),
+        )
+
+        result = await client.get_ticket_articles("123", limit=5, order="asc")
+
+        assert result["TicketID"] == "123"
+        assert result["ArticleCount"] == 1
+        assert result["Articles"][0]["Body"] == "Hello"
+        assert "WebURL" in result
+        assert "HistoryWebURL" in result

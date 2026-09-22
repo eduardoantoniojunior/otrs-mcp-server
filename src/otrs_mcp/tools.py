@@ -10,7 +10,7 @@ from mcp.server.fastmcp import FastMCP
 from otrs_mcp.activity import record_tool_call
 from otrs_mcp.client import OTRSClient
 from otrs_mcp.config import OTRSConfig
-from otrs_mcp.constants import VALID_PRIORITIES
+from otrs_mcp.constants import VALID_ARTICLE_ORDERS, VALID_PRIORITIES
 from otrs_mcp.exceptions import OTRSValidationError
 from otrs_mcp.mcp_auth import (
     ApiKeyVerifier,
@@ -137,14 +137,30 @@ async def create_ticket(
         raise
 
 
-@mcp.tool(description="Get ticket details from OTRS")
+@mcp.tool(
+    description=(
+        "Get ticket details from OTRS. Returns metadata (Title, Queue, State, "
+        "Priority, Customer, dates), plus WebURL and HistoryWebURL. When "
+        "include_articles=True, also returns 'Articles' (list) with the body "
+        "of each article (customer messages and agent replies)."
+    )
+)
 async def get_ticket(
     ticket_id: str,
     include_dynamic_fields: bool = True,
     include_extended_data: bool = True,
+    include_articles: bool = False,
+    article_limit: int | None = None,
+    article_order: str = "desc",
+    article_sender_type: str | None = None,
 ) -> dict[str, Any]:
     require_scope("read")
     validate_ticket_id(ticket_id)
+    if article_order.lower() not in VALID_ARTICLE_ORDERS:
+        raise OTRSValidationError(
+            f"article_order invalido: '{article_order}'. "
+            f"Valores validos: {', '.join(sorted(VALID_ARTICLE_ORDERS))}"
+        )
     client = _get_client()
     start = time.monotonic()
     try:
@@ -152,13 +168,25 @@ async def get_ticket(
             ticket_id=ticket_id,
             include_dynamic_fields=include_dynamic_fields,
             include_extended_data=include_extended_data,
+            include_articles=include_articles,
+            article_limit=article_limit,
+            article_order=article_order,
+            article_sender_type=article_sender_type,
         )
         elapsed = (time.monotonic() - start) * 1000
+        # Nao gravamos o corpo dos artigos na atividade: params contem apenas
+        # ids e flags, o retorno com o Body fica so no canal MCP.
         record_tool_call(
             tool="get_ticket",
             status="success",
             duration_ms=elapsed,
-            params={"ticket_id": ticket_id},
+            params={
+                "ticket_id": ticket_id,
+                "include_articles": include_articles,
+                "article_limit": article_limit,
+                "article_order": article_order,
+                "article_sender_type": article_sender_type,
+            },
             ticket_id=ticket_id,
         )
         return result
@@ -168,7 +196,65 @@ async def get_ticket(
             tool="get_ticket",
             status="error",
             duration_ms=elapsed,
-            params={"ticket_id": ticket_id},
+            params={"ticket_id": ticket_id, "include_articles": include_articles},
+            error=str(e),
+            ticket_id=ticket_id,
+        )
+        raise
+
+
+@mcp.tool(
+    description=(
+        "Get the articles (customer messages, agent replies, internal notes) "
+        "of an OTRS ticket. Use this when the user asks for the ticket "
+        "content, conversation summary, or what was said. Returns a list of "
+        "articles with Subject, Body, SenderType, IsVisibleForCustomer and "
+        "CreateTime."
+    )
+)
+async def get_ticket_articles(
+    ticket_id: str,
+    limit: int = 20,
+    order: str = "desc",
+    sender_type: str | None = None,
+) -> dict[str, Any]:
+    require_scope("read")
+    validate_ticket_id(ticket_id)
+    if order.lower() not in VALID_ARTICLE_ORDERS:
+        raise OTRSValidationError(
+            f"order invalido: '{order}'. "
+            f"Valores validos: {', '.join(sorted(VALID_ARTICLE_ORDERS))}"
+        )
+    client = _get_client()
+    start = time.monotonic()
+    try:
+        result = await client.get_ticket_articles(
+            ticket_id=ticket_id,
+            limit=limit,
+            order=order,
+            sender_type=sender_type,
+        )
+        elapsed = (time.monotonic() - start) * 1000
+        record_tool_call(
+            tool="get_ticket_articles",
+            status="success",
+            duration_ms=elapsed,
+            params={
+                "ticket_id": ticket_id,
+                "limit": limit,
+                "order": order,
+                "sender_type": sender_type,
+            },
+            ticket_id=ticket_id,
+        )
+        return result
+    except Exception as e:
+        elapsed = (time.monotonic() - start) * 1000
+        record_tool_call(
+            tool="get_ticket_articles",
+            status="error",
+            duration_ms=elapsed,
+            params={"ticket_id": ticket_id, "limit": limit},
             error=str(e),
             ticket_id=ticket_id,
         )
